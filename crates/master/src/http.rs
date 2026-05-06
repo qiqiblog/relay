@@ -2685,8 +2685,43 @@ async fn create_forward(
     let (protocols,) =
         tunnel_row.ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "隧道不存在"))?;
 
-    // 自动 upsert user_tunnel（无配额限制）
     let user_id = caller_id(&claims)?;
+
+    // 检查该 user_tunnel 是否已存在
+    let existing_ut: Option<(i64,)> =
+        sqlx::query_as("SELECT id FROM user_tunnels WHERE user_id = $1 AND tunnel_id = $2")
+            .bind(user_id)
+            .bind(req.tunnel_id)
+            .fetch_optional(&s.db)
+            .await?;
+
+    // 新建 user_tunnel 时检查 tunnel_limit
+    if existing_ut.is_none() {
+        let limit_row: Option<(i32,)> = sqlx::query_as(
+            "SELECT g.tunnel_limit FROM group_members gm
+               JOIN user_groups g ON g.id = gm.group_id
+              WHERE gm.user_id = $1
+              LIMIT 1",
+        )
+        .bind(user_id)
+        .fetch_optional(&s.db)
+        .await?;
+        let tunnel_limit = limit_row.map(|(l,)| l).unwrap_or(0);
+        if tunnel_limit > 0 {
+            let (current_count,): (i64,) =
+                sqlx::query_as("SELECT count(*) FROM user_tunnels WHERE user_id = $1")
+                    .bind(user_id)
+                    .fetch_one(&s.db)
+                    .await?;
+            if current_count >= tunnel_limit as i64 {
+                return Err(ApiError::new(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    "已达到隧道数量上限",
+                ));
+            }
+        }
+    }
+
     let user_tunnel_id: i64 = sqlx::query_scalar(
         "INSERT INTO user_tunnels (id, user_id, tunnel_id)
          VALUES ($1, $2, $3)
@@ -2759,6 +2794,27 @@ async fn create_forward(
             .await?;
     }
     tx.commit().await?;
+
+    // 若该 user_tunnel 已超流量配额，新建转发立即继承暂停状态
+    let quota_exceeded: Option<(i64,)> = sqlx::query_as(
+        "SELECT f.id FROM forwards f
+           JOIN forward_pause_reasons r ON r.forward_id = f.id
+          WHERE f.user_tunnel_id = $1
+            AND r.reason = $2
+          LIMIT 1",
+    )
+    .bind(user_tunnel_id)
+    .bind(crate::pause::REASON_TUNNEL_QUOTA_EXCEEDED)
+    .fetch_optional(&s.db)
+    .await?;
+    if quota_exceeded.is_some() {
+        let _ = crate::pause::write_pause_reason(
+            &s.db,
+            forward.id,
+            crate::pause::REASON_TUNNEL_QUOTA_EXCEEDED,
+        )
+        .await;
+    }
 
     // 探测并修复各跳端口；失败时删除刚创建的 forward 并返回错误。
     let port_warnings = match probe_and_fix_ports(&s, forward.id, &protocols).await {
