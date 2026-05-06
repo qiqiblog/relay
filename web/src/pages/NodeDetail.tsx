@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import useSWR from "swr";
-import { timeAgo } from "@/lib/utils";
+import { timeAgo, cn } from "@/lib/utils";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { ArrowLeft, RefreshCw, Copy, Check, Save, Plus, X, ArrowUp, ArrowDown, ArrowUpCircle, ShieldOff, Trash2, MoreHorizontal } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -100,6 +100,7 @@ export default function NodeDetail() {
     { refreshInterval: 5000 },
   );
   const [cmdCopied, setCmdCopied] = useState(false);
+  const [reenrollRegion, setReenrollRegion] = useState<"global" | "cn">("global");
   const [ipsInput, setIpsInput] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [prStart, setPrStart] = useState<number | "">("");
@@ -276,10 +277,13 @@ export default function NodeDetail() {
     }
   };
 
-  const reenrollCmd = (r: RotateTokenResp): string => {
+  const reenrollCmd = (r: RotateTokenResp, region: "global" | "cn" = reenrollRegion): string => {
     if (!serverInfo) return "// fetching server info…";
+    const scriptUrl = region === "cn"
+      ? `${window.location.origin}/scripts/install-node.sh`
+      : "https://raw.githubusercontent.com/0xUnixIO/relay/main/install-node.sh";
     return [
-      "bash <(curl -fsSL https://raw.githubusercontent.com/0xUnixIO/relay/main/install-node.sh) \\",
+      `bash <(curl -fsSL ${scriptUrl}) \\`,
       `  --master ${serverInfo.master_endpoint} \\`,
       `  --node-id ${r.id} \\`,
       `  --token ${r.enrollment_token} \\`,
@@ -288,7 +292,7 @@ export default function NodeDetail() {
   };
   const copyReenrollCmd = () => {
     if (!rotated) return;
-    navigator.clipboard.writeText(reenrollCmd(rotated));
+    navigator.clipboard.writeText(reenrollCmd(rotated, reenrollRegion));
     setCmdCopied(true);
     setTimeout(() => setCmdCopied(false), 2000);
   };
@@ -793,10 +797,28 @@ export default function NodeDetail() {
           </DialogHeader>
           {rotated && (
             <div>
-              <Label className="text-sm uppercase text-muted-foreground">安装命令</Label>
-              <ScrollArea className="mt-1 h-64 rounded-md border bg-muted">
+              <div className="flex items-center justify-between mb-2">
+                <Label className="text-sm uppercase text-muted-foreground">安装命令</Label>
+                <div className="flex gap-0.5 rounded-lg bg-muted p-0.5 text-xs">
+                  {(["global", "cn"] as const).map((r) => (
+                    <button
+                      key={r}
+                      onClick={() => setReenrollRegion(r)}
+                      className={cn(
+                        "rounded-md px-2.5 py-1 font-medium transition-colors",
+                        reenrollRegion === r
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      {r === "global" ? "国际线路" : "国内线路"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <ScrollArea className="h-64 rounded-md border bg-muted">
                 <pre className="whitespace-pre-wrap break-all p-3 text-xs">
-                  {reenrollCmd(rotated)}
+                  {reenrollCmd(rotated, reenrollRegion)}
                 </pre>
               </ScrollArea>
               <Button variant="outline" size="sm" className="mt-2" onClick={copyReenrollCmd}>

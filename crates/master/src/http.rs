@@ -151,7 +151,8 @@ pub async fn serve(addr: SocketAddr, state: AppState) -> anyhow::Result<()> {
         .route("/api/v1/auth/status", get(auth_status))
         .route("/api/v1/auth/bootstrap", post(bootstrap_admin))
         .route("/api/v1/auth/login", post(login))
-        .route("/api/v1/system/branding", get(get_branding));
+        .route("/api/v1/system/branding", get(get_branding))
+        .route("/scripts/:name", get(proxy_script));
 
     let app = public
         .merge(protected)
@@ -757,7 +758,7 @@ pub struct MeResp {
     pub group_name: Option<String>,
     pub flow_limit_bytes: i64,
     pub speed_limit_kbps: i64,
-    pub tunnel_limit: i32,
+    pub forward_limit: i32,
 }
 
 async fn get_me(
@@ -784,7 +785,7 @@ async fn get_me(
             .fetch_one(&s.db)
             .await?;
     let group_row: Option<(String, i64, i64, i32)> = sqlx::query_as(
-        "SELECT g.name, g.flow_limit_bytes, g.speed_limit_kbps, g.tunnel_limit
+        "SELECT g.name, g.flow_limit_bytes, g.speed_limit_kbps, g.forward_limit
            FROM group_members gm
            JOIN user_groups g ON g.id = gm.group_id
           WHERE gm.user_id = $1
@@ -793,7 +794,7 @@ async fn get_me(
     .bind(id)
     .fetch_optional(&s.db)
     .await?;
-    let (group_name, flow_limit_bytes, speed_limit_kbps, tunnel_limit) =
+    let (group_name, flow_limit_bytes, speed_limit_kbps, forward_limit) =
         group_row.map_or((None, 0i64, 0i64, 0i32), |(n, f, s, t)| (Some(n), f, s, t));
     Ok(Json(MeResp {
         user,
@@ -802,7 +803,7 @@ async fn get_me(
         group_name,
         flow_limit_bytes,
         speed_limit_kbps,
-        tunnel_limit,
+        forward_limit,
     }))
 }
 
@@ -2687,38 +2688,31 @@ async fn create_forward(
 
     let user_id = caller_id(&claims)?;
 
-    // 检查该 user_tunnel 是否已存在
-    let existing_ut: Option<(i64,)> =
-        sqlx::query_as("SELECT id FROM user_tunnels WHERE user_id = $1 AND tunnel_id = $2")
-            .bind(user_id)
-            .bind(req.tunnel_id)
-            .fetch_optional(&s.db)
-            .await?;
-
-    // 新建 user_tunnel 时检查 tunnel_limit
-    if existing_ut.is_none() {
-        let limit_row: Option<(i32,)> = sqlx::query_as(
-            "SELECT g.tunnel_limit FROM group_members gm
-               JOIN user_groups g ON g.id = gm.group_id
-              WHERE gm.user_id = $1
-              LIMIT 1",
+    // 检查转发数量是否已达上限
+    let limit_row: Option<(i32,)> = sqlx::query_as(
+        "SELECT g.forward_limit FROM group_members gm
+           JOIN user_groups g ON g.id = gm.group_id
+          WHERE gm.user_id = $1
+          LIMIT 1",
+    )
+    .bind(user_id)
+    .fetch_optional(&s.db)
+    .await?;
+    let forward_limit = limit_row.map(|(l,)| l).unwrap_or(0);
+    if forward_limit > 0 {
+        let (current_count,): (i64,) = sqlx::query_as(
+            "SELECT count(*) FROM forwards f
+               JOIN user_tunnels ut ON ut.id = f.user_tunnel_id
+              WHERE ut.user_id = $1",
         )
         .bind(user_id)
-        .fetch_optional(&s.db)
+        .fetch_one(&s.db)
         .await?;
-        let tunnel_limit = limit_row.map(|(l,)| l).unwrap_or(0);
-        if tunnel_limit > 0 {
-            let (current_count,): (i64,) =
-                sqlx::query_as("SELECT count(*) FROM user_tunnels WHERE user_id = $1")
-                    .bind(user_id)
-                    .fetch_one(&s.db)
-                    .await?;
-            if current_count >= tunnel_limit as i64 {
-                return Err(ApiError::new(
-                    StatusCode::UNPROCESSABLE_ENTITY,
-                    "已达到隧道数量上限",
-                ));
-            }
+        if current_count >= forward_limit as i64 {
+            return Err(ApiError::new(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "已达到转发数量上限",
+            ));
         }
     }
 
@@ -3447,7 +3441,7 @@ async fn list_user_groups(State(s): State<AppState>) -> ApiResult<Json<Vec<UserG
     );
     let rows: Vec<Row> = sqlx::query_as(
         "SELECT g.id, g.name, g.remark, g.flow_limit_bytes, g.speed_limit_kbps,
-                g.tunnel_limit,
+                g.forward_limit,
                 g.created_at, g.updated_at,
                 COUNT(DISTINCT gm.user_id)::BIGINT,
                 COUNT(DISTINCT gt.id)::BIGINT
@@ -3468,7 +3462,7 @@ async fn list_user_groups(State(s): State<AppState>) -> ApiResult<Json<Vec<UserG
                 remark,
                 flow_limit_bytes,
                 speed_limit_kbps,
-                tunnel_limit,
+                forward_limit,
                 created_at,
                 updated_at,
                 mc,
@@ -3480,7 +3474,7 @@ async fn list_user_groups(State(s): State<AppState>) -> ApiResult<Json<Vec<UserG
                     remark,
                     flow_limit_bytes,
                     speed_limit_kbps,
-                    tunnel_limit,
+                    forward_limit,
                     created_at,
                     updated_at,
                 },
@@ -3551,7 +3545,7 @@ async fn get_user_group(
     );
     let row: Option<Row> = sqlx::query_as(
         "SELECT g.id, g.name, g.remark, g.flow_limit_bytes, g.speed_limit_kbps,
-                g.tunnel_limit,
+                g.forward_limit,
                 g.created_at, g.updated_at,
                 COUNT(DISTINCT gm.user_id)::BIGINT,
                 COUNT(DISTINCT gt.id)::BIGINT
@@ -3570,7 +3564,7 @@ async fn get_user_group(
         remark,
         flow_limit_bytes,
         speed_limit_kbps,
-        tunnel_limit,
+        forward_limit,
         created_at,
         updated_at,
         mc,
@@ -3583,7 +3577,7 @@ async fn get_user_group(
             remark,
             flow_limit_bytes,
             speed_limit_kbps,
-            tunnel_limit,
+            forward_limit,
             created_at,
             updated_at,
         },
@@ -3601,7 +3595,7 @@ pub struct UpdateUserGroupReq {
     #[serde(default)]
     pub speed_limit_kbps: Option<i64>,
     #[serde(default)]
-    pub tunnel_limit: Option<i32>,
+    pub forward_limit: Option<i32>,
 }
 
 async fn update_user_group(
@@ -3613,7 +3607,7 @@ async fn update_user_group(
         && req.remark.is_none()
         && req.flow_limit_gb.is_none()
         && req.speed_limit_kbps.is_none()
-        && req.tunnel_limit.is_none()
+        && req.forward_limit.is_none()
     {
         return Err(ApiError::new(
             StatusCode::UNPROCESSABLE_ENTITY,
@@ -3627,7 +3621,7 @@ async fn update_user_group(
              remark            = COALESCE($2, remark),
              flow_limit_bytes  = COALESCE($3, flow_limit_bytes),
              speed_limit_kbps  = COALESCE($4, speed_limit_kbps),
-             tunnel_limit      = COALESCE($5, tunnel_limit)
+             forward_limit      = COALESCE($5, forward_limit)
          WHERE id = $6
          RETURNING *",
     )
@@ -3635,7 +3629,7 @@ async fn update_user_group(
     .bind(req.remark.as_deref())
     .bind(flow_bytes)
     .bind(req.speed_limit_kbps)
-    .bind(req.tunnel_limit)
+    .bind(req.forward_limit)
     .bind(id)
     .fetch_optional(&s.db)
     .await
@@ -4302,4 +4296,45 @@ async fn get_upgrade_job(
         .await?;
     row.map(Json)
         .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "升级任务不存在"))
+}
+
+/// 代理 GitHub raw 脚本，供国内用户通过 master 服务器下载安装脚本。
+async fn proxy_script(Path(name): Path<String>) -> Response {
+    const ALLOWED: &[&str] = &[
+        "install.sh",
+        "install-node.sh",
+        "install-runner.sh",
+        "uninstall.sh",
+    ];
+    if !ALLOWED.contains(&name.as_str()) {
+        return (StatusCode::NOT_FOUND, "脚本不存在").into_response();
+    }
+    let url = format!(
+        "https://raw.githubusercontent.com/0xUnixIO/relay/main/{}",
+        name
+    );
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .user_agent(concat!("relay-master/", env!("CARGO_PKG_VERSION")))
+        .build()
+        .unwrap();
+    match client.get(&url).send().await {
+        Ok(resp) if resp.status().is_success() => {
+            let bytes = match resp.bytes().await {
+                Ok(b) => b,
+                Err(_) => return (StatusCode::BAD_GATEWAY, "读取上游响应失败").into_response(),
+            };
+            (
+                StatusCode::OK,
+                [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+                bytes,
+            )
+                .into_response()
+        }
+        Ok(resp) => {
+            let status = resp.status();
+            (StatusCode::BAD_GATEWAY, format!("上游返回 {status}")).into_response()
+        }
+        Err(_) => (StatusCode::BAD_GATEWAY, "无法连接 GitHub").into_response(),
+    }
 }

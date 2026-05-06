@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import useSWR from "swr";
-import { timeAgo } from "@/lib/utils";
+import { timeAgo, cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 import { Plus, Copy, Check, Search, Cpu, MemoryStick, Network, DatabaseZap, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -211,12 +211,16 @@ export default function NodesPage() {
   };
 
   const [cmdCopied, setCmdCopied] = useState(false);
+  const [installRegion, setInstallRegion] = useState<"global" | "cn">("global");
   const createdNode = created ? nodes.find((n) => n.id === created.id) : null;
   const nodeOnline = createdNode ? isOnline(createdNode) : false;
-  const installCmd = (c: { id: string; enrollment_token: string }): string => {
+  const installCmd = (c: { id: string; enrollment_token: string }, region: "global" | "cn" = installRegion): string => {
     if (!serverInfo) return "// fetching server info…";
+    const scriptUrl = region === "cn"
+      ? `${window.location.origin}/scripts/install-node.sh`
+      : "https://raw.githubusercontent.com/0xUnixIO/relay/main/install-node.sh";
     return [
-      "bash <(curl -fsSL https://raw.githubusercontent.com/0xUnixIO/relay/main/install-node.sh) \\",
+      `bash <(curl -fsSL ${scriptUrl}) \\`,
       `  --master ${serverInfo.master_endpoint} \\`,
       `  --node-id ${c.id} \\`,
       `  --token ${c.enrollment_token} \\`,
@@ -225,7 +229,7 @@ export default function NodesPage() {
   };
   const copyCmd = () => {
     if (!created) return;
-    navigator.clipboard.writeText(installCmd(created));
+    navigator.clipboard.writeText(installCmd(created, installRegion));
     setCmdCopied(true);
     setTimeout(() => setCmdCopied(false), 2000);
   };
@@ -313,10 +317,28 @@ export default function NodesPage() {
           {created && (
             <div className="space-y-4">
               <div>
-                <Label className="text-sm uppercase text-muted-foreground">一键安装命令</Label>
-                <ScrollArea className="mt-1 h-64 rounded-md border bg-muted">
+                <div className="flex items-center justify-between mb-2">
+                  <Label className="text-sm uppercase text-muted-foreground">一键安装命令</Label>
+                  <div className="flex gap-0.5 rounded-lg bg-muted p-0.5 text-xs">
+                    {(["global", "cn"] as const).map((r) => (
+                      <button
+                        key={r}
+                        onClick={() => setInstallRegion(r)}
+                        className={cn(
+                          "rounded-md px-2.5 py-1 font-medium transition-colors",
+                          installRegion === r
+                            ? "bg-background text-foreground shadow-sm"
+                            : "text-muted-foreground hover:text-foreground"
+                        )}
+                      >
+                        {r === "global" ? "国际线路" : "国内线路"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <ScrollArea className="h-64 rounded-md border bg-muted">
                   <pre className="whitespace-pre-wrap break-all p-3 text-xs">
-                    {installCmd(created)}
+                    {installCmd(created, installRegion)}
                   </pre>
                 </ScrollArea>
                 <Button variant="outline" size="sm" className="mt-2" onClick={copyCmd}>

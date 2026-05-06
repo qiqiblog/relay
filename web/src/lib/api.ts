@@ -76,7 +76,7 @@ export interface MeResp extends User {
   group_name: string | null;
   flow_limit_bytes: number;
   speed_limit_kbps: number;
-  tunnel_limit: number;
+  forward_limit: number;
 }
 
 // ---------- Nodes ----------
@@ -461,7 +461,7 @@ export const Api = {
   listUserGroups: () => api<UserGroup[]>("/api/v1/user-groups"),
   createUserGroup: (body: { name: string; remark?: string }) =>
     api<UserGroup>("/api/v1/user-groups", { method: "POST", body: JSON.stringify(body) }),
-  updateUserGroup: (id: string, body: { name?: string; remark?: string; flow_limit_gb?: number; speed_limit_kbps?: number; tunnel_limit?: number }) =>
+  updateUserGroup: (id: string, body: { name?: string; remark?: string; flow_limit_gb?: number; speed_limit_kbps?: number; forward_limit?: number }) =>
     api<UserGroup>(`/api/v1/user-groups/${id}`, { method: "PUT", body: JSON.stringify(body) }),
   deleteUserGroup: (id: string) =>
     api<void>(`/api/v1/user-groups/${id}`, { method: "DELETE" }),
@@ -594,7 +594,7 @@ export interface UserGroup {
   tunnel_count: number;
   flow_limit_bytes: number;
   speed_limit_kbps: number;
-  tunnel_limit: number;
+  forward_limit: number;
   created_at: string;
   updated_at: string;
 }

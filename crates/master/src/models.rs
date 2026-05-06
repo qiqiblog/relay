@@ -192,7 +192,7 @@ pub struct UserGroup {
     pub remark: String,
     pub flow_limit_bytes: i64,
     pub speed_limit_kbps: i64,
-    pub tunnel_limit: i32,
+    pub forward_limit: i32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

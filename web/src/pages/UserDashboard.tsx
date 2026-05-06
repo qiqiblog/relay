@@ -82,9 +82,9 @@ export default function UserDashboard() {
                 </span>
               </div>
               <div>
-                <span className="text-muted-foreground">隧道上限</span>
+                <span className="text-muted-foreground">转发上限</span>
                 <span className="ml-2 font-medium">
-                  {me.tunnel_limit > 0 ? `${me.tunnel_limit} 条` : "不限"}
+                  {me.forward_limit > 0 ? `${me.forward_limit} 条` : "不限"}
                 </span>
               </div>
               <div>

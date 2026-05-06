@@ -90,7 +90,7 @@ export default function UserGroupsPage() {
                   <TableHead>成员数</TableHead>
                   <TableHead>流量限制</TableHead>
                   <TableHead>限速</TableHead>
-                  <TableHead>隧道上限</TableHead>
+                  <TableHead>转发上限</TableHead>
                   <TableHead>备注</TableHead>
                   <TableHead>操作</TableHead>
                 </TableRow>
@@ -135,7 +135,7 @@ export default function UserGroupsPage() {
                           : "不限"}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {g.tunnel_limit > 0 ? `${g.tunnel_limit} 条` : "不限"}
+                        {g.forward_limit > 0 ? `${g.forward_limit} 条` : "不限"}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {g.remark || "—"}
@@ -213,7 +213,7 @@ function GroupManageDialog({ group, onClose }: { group: UserGroup; onClose: () =
     group.speed_limit_kbps > 0 ? String(group.speed_limit_kbps / 125) : ""
   );
   const [tunnelLimit, setTunnelLimit] = useState(
-    group.tunnel_limit > 0 ? String(group.tunnel_limit) : ""
+    group.forward_limit > 0 ? String(group.forward_limit) : ""
   );
   const [saving, setSaving] = useState(false);
 
@@ -225,7 +225,7 @@ function GroupManageDialog({ group, onClose }: { group: UserGroup; onClose: () =
     const tl = tunnelLimit.trim() ? Number(tunnelLimit) : 0;
     if (!isFinite(gb) || gb < 0) { toast.error("流量限制格式不正确"); return; }
     if (!isFinite(mbps) || mbps < 0) { toast.error("限速格式不正确"); return; }
-    if (!isFinite(tl) || tl < 0 || !Number.isInteger(tl)) { toast.error("隧道上限须为非负整数"); return; }
+    if (!isFinite(tl) || tl < 0 || !Number.isInteger(tl)) { toast.error("转发上限须为非负整数"); return; }
     setSaving(true);
     try {
       await Api.updateUserGroup(group.id, {
@@ -233,7 +233,7 @@ function GroupManageDialog({ group, onClose }: { group: UserGroup; onClose: () =
         remark,
         flow_limit_gb: gb,
         speed_limit_kbps: Math.round(mbps * 125),
-        tunnel_limit: tl,
+        forward_limit: tl,
       });
       toast.success("已保存");
       onClose();
@@ -264,7 +264,7 @@ function GroupManageDialog({ group, onClose }: { group: UserGroup; onClose: () =
               <Input value={remark} onChange={(e) => setRemark(e.target.value)} placeholder="可选" />
             </div>
           </div>
-          {/* 第二行：流量 + 限速 + 隧道上限 */}
+          {/* 第二行：流量 + 限速 + 转发上限 */}
           <div className="flex gap-2 items-end">
             <div className="space-y-1 flex-1">
               <Label className="text-xs text-muted-foreground">流量 GB</Label>
@@ -285,7 +285,7 @@ function GroupManageDialog({ group, onClose }: { group: UserGroup; onClose: () =
               />
             </div>
             <div className="space-y-1 flex-1">
-              <Label className="text-xs text-muted-foreground">隧道上限（条）</Label>
+              <Label className="text-xs text-muted-foreground">转发上限（条）</Label>
               <Input
                 type="number" min={0} step="1"
                 value={tunnelLimit}

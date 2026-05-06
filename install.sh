@@ -12,6 +12,7 @@
 #   --version <tag>     pin a specific release tag (default: latest)
 #   --repo <owner/name> override the GitHub repo (default: 0xUnixIO/relay)
 #   --no-start          install but don't enable/start the service
+#   --update            non-interactive upgrade (skips the menu, keeps config)
 #   --uninstall         stop service, remove binary + unit. Then asks
 #                       interactively whether to also wipe env / PKI /
 #                       Postgres data (default: keep).
@@ -142,6 +143,7 @@ while [[ $# -gt 0 ]]; do
     --prerelease) INCLUDE_PRERELEASE=1; shift ;;
     --repo)       REPO="$2"; shift 2 ;;
     --no-start)   START=0; shift ;;
+    --update)     MODE="update"; shift ;;
     --uninstall)  MODE="uninstall"; UNINSTALL=1; shift ;;
     -h|--help)    sed -n '2,30p' "$0"; exit 0 ;;
     *) die "unknown flag: $1" ;;

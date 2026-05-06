@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Copy, Check } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { Api, ApiError } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -29,6 +30,7 @@ export default function ConfigPage() {
   const [saving, setSaving] = useState(false);
   const [channelSaving, setChannelSaving] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [upgradeRegion, setUpgradeRegion] = useState<"global" | "cn">("global");
   const [brandDraft, setBrandDraft] = useState<string | undefined>(undefined);
   const [brandSaving, setBrandSaving] = useState(false);
 
@@ -73,10 +75,15 @@ export default function ConfigPage() {
   const masterVersion = sysVersion?.master_version ?? "—";
   const masterTagged = masterVersion.startsWith("v") ? masterVersion : `v${masterVersion}`;
   const upgradeTarget = sysVersion?.latest_stable?.tag ?? masterTagged;
-  const masterUpgradeCmd = `curl -fsSL https://raw.githubusercontent.com/0xUnixIO/relay/main/install.sh | sudo bash -s -- --version ${upgradeTarget}`;
+  const masterUpgradeCmd = (region: "global" | "cn" = upgradeRegion) => {
+    const scriptUrl = region === "cn"
+      ? `${window.location.origin}/scripts/install.sh`
+      : "https://raw.githubusercontent.com/0xUnixIO/relay/main/install.sh";
+    return `curl -fsSL ${scriptUrl} | sudo bash -s -- --update --version ${upgradeTarget}`;
+  };
   const copyCmd = async () => {
     try {
-      await navigator.clipboard.writeText(masterUpgradeCmd);
+      await navigator.clipboard.writeText(masterUpgradeCmd(upgradeRegion));
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
@@ -245,9 +252,27 @@ export default function ConfigPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex gap-0.5 rounded-lg bg-muted p-0.5 text-xs">
+              {(["global", "cn"] as const).map((r) => (
+                <button
+                  key={r}
+                  onClick={() => setUpgradeRegion(r)}
+                  className={cn(
+                    "rounded-md px-2.5 py-1 font-medium transition-colors",
+                    upgradeRegion === r
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {r === "global" ? "国际线路" : "国内线路"}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="flex gap-2 items-stretch">
             <code className="flex-1 rounded-md border bg-muted/30 px-3 py-2 text-xs font-mono break-all">
-              {masterUpgradeCmd}
+              {masterUpgradeCmd(upgradeRegion)}
             </code>
             <Button variant="outline" size="sm" onClick={copyCmd} className="flex-shrink-0">
               {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
