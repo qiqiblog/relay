@@ -279,7 +279,7 @@ export default function NodeDetail() {
   const reenrollCmd = (r: RotateTokenResp): string => {
     if (!serverInfo) return "// fetching server info…";
     return [
-      "bash <(curl -fsSL https://raw.githubusercontent.com/unix-relay/relay/main/install-node.sh) \\",
+      "bash <(curl -fsSL https://raw.githubusercontent.com/0xUnixIO/relay/main/install-node.sh) \\",
       `  --master ${serverInfo.master_endpoint} \\`,
       `  --node-id ${r.id} \\`,
       `  --token ${r.enrollment_token} \\`,

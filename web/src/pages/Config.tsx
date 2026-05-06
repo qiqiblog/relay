@@ -73,7 +73,7 @@ export default function ConfigPage() {
   const masterVersion = sysVersion?.master_version ?? "—";
   const masterTagged = masterVersion.startsWith("v") ? masterVersion : `v${masterVersion}`;
   const upgradeTarget = sysVersion?.latest_stable?.tag ?? masterTagged;
-  const masterUpgradeCmd = `curl -fsSL https://raw.githubusercontent.com/unix-relay/relay/main/install.sh | sudo bash -s -- --version ${upgradeTarget}`;
+  const masterUpgradeCmd = `curl -fsSL https://raw.githubusercontent.com/0xUnixIO/relay/main/install.sh | sudo bash -s -- --version ${upgradeTarget}`;
   const copyCmd = async () => {
     try {
       await navigator.clipboard.writeText(masterUpgradeCmd);
