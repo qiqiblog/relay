@@ -283,8 +283,7 @@ export default function NodeDetail() {
       `  --master ${serverInfo.master_endpoint} \\`,
       `  --node-id ${r.id} \\`,
       `  --token ${r.enrollment_token} \\`,
-      `  --ca-cert ${serverInfo.ca_cert_b64} \\`,
-      "  --reenroll",
+      `  --ca-cert ${serverInfo.ca_cert_b64}`,
     ].join("\n");
   };
   const copyReenrollCmd = () => {
