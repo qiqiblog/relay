@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>relay — port forwarding control plane</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><defs><linearGradient id='g' x1='0' y1='0' x2='0' y2='1'><stop offset='0%25' stop-color='hsl(199 78%25 56%25)'/><stop offset='100%25' stop-color='hsl(199 78%25 38%25)'/></linearGradient></defs><path fill='url(%23g)' fill-rule='evenodd' d='M6 4 V28 H10 V18 H13 L21 28 H26 L17 17.5 Q22 16 22 11 Q22 4 14 4 Z M10 8 H14 Q18 8 18 11 Q18 14 14 14 H10 Z'/></svg>" />
+    <script>
+      // Apply theme class before first paint to prevent light→dark flash on refresh.
+      (function () {
+        try {
+          var stored = localStorage.getItem("theme");
+          var prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          var theme = stored === "light" || stored === "dark" ? stored : prefersDark ? "dark" : "light";
+          if (theme === "dark") document.documentElement.classList.add("dark");
+        } catch (_) {}
+      })();
+    </script>
+    <link rel="stylesheet" href="./index.css" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>

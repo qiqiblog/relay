@@ -1,0 +1,54 @@
+name: Bug 报告
+description: 报告一个异常行为或错误
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢你花时间报告 Bug！安全漏洞请勿通过此处提交，参阅 [SECURITY.md](../SECURITY.md)。
+
+  - type: input
+    id: version
+    attributes:
+      label: relay 版本
+      placeholder: "例：v0.2.0（运行 relay-master --version 查看）"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: 涉及组件
+      options:
+        - master
+        - node
+        - web UI
+        - install script
+        - 其他
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 问题描述
+      description: 发生了什么？期望行为是什么？
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 执行 ...
+        2. 看到 ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 相关日志
+      description: 粘贴 `RUST_LOG=debug` 下的日志（请删除敏感信息）
+      render: text

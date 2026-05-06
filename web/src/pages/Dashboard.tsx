@@ -1,0 +1,319 @@
+import { timeAgo } from "@/lib/utils";
+import { Link } from "react-router-dom";
+import { Server, Network, Zap, Activity } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Api, type NodeInfo } from "@/lib/api";
+import useSWR from "swr";
+import { ProtocolSetBadge } from "@/components/ui/protocol-set-badge";
+import { EmptyState } from "@/components/ui/empty-state";
+import { useRef, useEffect, useMemo } from "react";
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
+
+function isOnline(n: NodeInfo): boolean {
+  if (!n.last_seen_at) return false;
+  return Date.now() - new Date(n.last_seen_at).getTime() < 15_000;
+}
+
+function fmtBytes(n: number): string {
+  const u = ["B", "KB", "MB", "GB", "TB"];
+  let v = n, i = 0;
+  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+  return `${v.toFixed(v < 10 ? 1 : 0)} ${u[i]}`;
+}
+
+function MiniBar({ value, max, color }: { value: number; max: number; color: string }) {
+  const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
+  return (
+    <div className="h-1 w-full rounded-full bg-border overflow-hidden">
+      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
+    </div>
+  );
+}
+
+/** 环形缓冲区条目 */
+interface FlowSample {
+  ts: number;
+  inBytes: number;
+  outBytes: number;
+}
+
+/** Tooltip 格式化 */
+function FlowTooltip({ active, payload }: { active?: boolean; payload?: Array<{ value: number; name: string }> }) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="rounded-md border bg-background px-2.5 py-1.5 text-xs shadow-sm space-y-0.5">
+      {payload.map((p) => (
+        <div key={p.name} className="flex items-center gap-2">
+          <span className="text-muted-foreground">{p.name}</span>
+          <span className="font-medium tabular-nums">{fmtBytes(p.value)}/s</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export default function Dashboard() {
+  const { data: nodes = [] } = useSWR("nodes", Api.listNodes, { refreshInterval: 5000 });
+  const { data: forwards = [] } = useSWR("forwards", Api.listForwards, { refreshInterval: 5000 });
+
+  // ---------- 流量趋势：环形缓冲区 ----------
+  const bufRef = useRef<FlowSample[]>([]);
+
+  useEffect(() => {
+    // 每次 forwards 更新时，把当前总量快照追加到缓冲区
+    const inBytes = forwards.reduce((s, f) => s + (f.in_flow_bytes ?? 0), 0);
+    const outBytes = forwards.reduce((s, f) => s + (f.out_flow_bytes ?? 0), 0);
+    const sample: FlowSample = { ts: Date.now(), inBytes, outBytes };
+    bufRef.current = [...bufRef.current, sample].slice(-60); // 最多保留 60 条
+  }, [forwards]);
+
+  /** 将相邻两条样本做差，得到 bytes/sec 速率数组，供图表渲染 */
+  const rateData = useMemo(() => {
+    const buf = bufRef.current;
+    if (buf.length < 2) return [];
+    const result: { inRate: number; outRate: number }[] = [];
+    for (let i = 1; i < buf.length; i++) {
+      const dtSec = (buf[i].ts - buf[i - 1].ts) / 1000;
+      if (dtSec <= 0) continue;
+      result.push({
+        inRate: Math.max(0, (buf[i].inBytes - buf[i - 1].inBytes) / dtSec),
+        outRate: Math.max(0, (buf[i].outBytes - buf[i - 1].outBytes) / dtSec),
+      });
+    }
+    return result;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [forwards]); // forwards 更新后重新计算
+
+  // ---------- 其余统计 ----------
+  const online = nodes.filter(isOnline);
+  const offline = nodes.filter((n) => !isOnline(n));
+  const enabled = forwards.filter((f) => f.effective_enabled);
+  const totalConns = nodes.reduce((s, n) => s + (n.last_heartbeat?.active_connections ?? 0), 0);
+
+  // "active" = effective_enabled and entry node online.
+  const active = enabled.filter((f) => {
+    const entry = f.ports.find((p) => p.hop_index === 0)?.node_id;
+    const node = nodes.find((n) => n.id === entry);
+    return node && isOnline(node);
+  });
+
+  return (
+    <div className="space-y-8">
+      <div>
+        <h1 className="text-2xl font-semibold">仪表</h1>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        {[
+          { icon: Server, label: "节点在线", value: `${online.length} / ${nodes.length}`, sub: nodes.length === 0 ? "暂无节点" : offline.length > 0 ? `${offline.length} 离线` : "全部在线" },
+          { icon: Network, label: "转发启用", value: `${enabled.length} / ${forwards.length}`, sub: forwards.length === 0 ? "暂无转发" : `${forwards.length - enabled.length} 已停用` },
+          { icon: Zap, label: "活跃连接", value: totalConns, sub: "所有节点合计" },
+          { icon: Activity, label: "活跃转发", value: active.length, sub: "入口节点在线" },
+        ].map(({ icon: Icon, label, value, sub }) => (
+          <div key={label} className="rounded-lg border p-4 space-y-2">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span className="rounded-md bg-muted p-1.5 text-foreground/80">
+                <Icon className="h-3.5 w-3.5" />
+              </span>
+              {label}
+            </div>
+            <div className="text-2xl font-semibold tabular-nums">{value}</div>
+            <div className="text-sm text-muted-foreground">{sub}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* 流量趋势图 */}
+      <div className="rounded-lg border p-4 space-y-3">
+        {/* 标题栏 */}
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+            流量趋势（5 min）
+          </h2>
+          <div className="flex items-center gap-4 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block h-2 w-2 rounded-sm" style={{ backgroundColor: "hsl(var(--primary))" }} />
+              ↓ 下载
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block h-2 w-2 rounded-sm" style={{ backgroundColor: "#10b981" }} />
+              ↑ 上传
+            </span>
+          </div>
+        </div>
+
+        {/* 图表主体 */}
+        {rateData.length < 2 ? (
+          <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">
+            采集中…
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height={160}>
+            <AreaChart data={rateData} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
+              <defs>
+                {/* 下载渐变 */}
+                <linearGradient id="gradIn" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.25} />
+                  <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                </linearGradient>
+                {/* 上传渐变 */}
+                <linearGradient id="gradOut" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#10b981" stopOpacity={0.25} />
+                  <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <XAxis hide />
+              <YAxis
+                hide={false}
+                width={68}
+                tickLine={false}
+                axisLine={false}
+                tick={{ fontSize: 11 }}
+                tickFormatter={(v: number) => `${fmtBytes(v)}/s`}
+              />
+              <Tooltip content={<FlowTooltip />} />
+              <Area
+                type="monotone"
+                dataKey="inRate"
+                name="下载"
+                stroke="hsl(var(--primary))"
+                strokeWidth={1.5}
+                fill="url(#gradIn)"
+                dot={false}
+                isAnimationActive={false}
+              />
+              <Area
+                type="monotone"
+                dataKey="outRate"
+                name="上传"
+                stroke="#10b981"
+                strokeWidth={1.5}
+                fill="url(#gradOut)"
+                dot={false}
+                isAnimationActive={false}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
+      <div className="space-y-3">
+        <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">节点状态</h2>
+        {nodes.length === 0 ? (
+          <EmptyState icon={Server} title="暂无节点" description="新增并启动节点 agent 后会自动出现在这里。" />
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {nodes.map((n) => {
+              const on = isOnline(n);
+              const hb = n.last_heartbeat;
+              const cpu = hb?.cpu_pct ?? 0;
+              const memUsed = hb?.mem_used_bytes ?? 0;
+              const memTotal = hb?.mem_total_bytes ?? 0;
+              const conns = hb?.active_connections ?? 0;
+              const nodeForwards = forwards.filter((f) =>
+                f.ports.some((p) => p.node_id === n.id),
+              );
+              return (
+                <Link
+                  key={n.id}
+                  to={`/nodes/${n.id}`}
+                  className="rounded-lg border p-4 space-y-3 hover:bg-accent transition-colors block"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className={`h-2 w-2 rounded-full shrink-0 ${on ? "bg-emerald-500" : "bg-border"}`} />
+                      <span className="text-sm font-medium truncate">{n.hostname || n.id}</span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {nodeForwards.length > 0 && (
+                        <span className="text-sm text-muted-foreground">{nodeForwards.length} 转发</span>
+                      )}
+                      <Badge variant={on ? "success" : "outline"}>{on ? "在线" : "离线"}</Badge>
+                    </div>
+                  </div>
+
+                  {on && hb ? (
+                    <div className="space-y-2">
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-sm text-muted-foreground">
+                          <span>CPU</span>
+                          <span>{cpu.toFixed(1)}%</span>
+                        </div>
+                        <MiniBar value={cpu} max={100} color={cpu > 80 ? "#ef4444" : cpu > 50 ? "#f59e0b" : "#10b981"} />
+                      </div>
+                      {memTotal > 0 && (
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-sm text-muted-foreground">
+                            <span>内存</span>
+                            <span>{fmtBytes(memUsed)} / {fmtBytes(memTotal)}</span>
+                          </div>
+                          <MiniBar value={memUsed} max={memTotal} color={memUsed / memTotal > 0.85 ? "#ef4444" : "#6366f1"} />
+                        </div>
+                      )}
+                      {conns > 0 && (
+                        <div className="text-sm text-muted-foreground">
+                          {conns} 活跃连接
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-muted-foreground">
+                      {n.last_seen_at
+                        ? `最后上报 ${new Date(n.last_seen_at).toLocaleString()}（${timeAgo(n.last_seen_at)}）`
+                        : "从未连接"}
+                    </div>
+                  )}
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {active.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">活跃转发</h2>
+          <div className="rounded-lg border divide-y">
+            {active.map((f) => {
+              const path = f.ports
+                .slice()
+                .sort((a, b) => a.hop_index - b.hop_index)
+                .map((p) => nodes.find((n) => n.id === p.node_id)?.hostname || p.node_id)
+                .join(" → ");
+              const firstUpstream = f.remote_addrs?.[0] ?? "—";
+              return (
+                <div key={f.id} className="flex items-center justify-between px-4 py-3 text-sm">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <ProtocolSetBadge protocols={f.protocols} />
+                    <span className="font-medium truncate">{f.name}</span>
+                    <span className="font-mono text-xs text-muted-foreground hidden sm:block truncate">
+                      :{f.in_port} → {firstUpstream}
+                      {f.remote_addrs?.length > 1 && ` +${f.remote_addrs.length - 1}`}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-4 shrink-0 ml-4">
+                    {f.active_connections > 0 && (
+                      <span className="text-sm text-emerald-500 tabular-nums">{f.active_connections} 连接</span>
+                    )}
+                    <span className="font-mono text-xs text-muted-foreground hidden sm:flex gap-1.5">
+                      <span title="入站">↓{fmtBytes(f.in_flow_bytes)}</span>
+                      <span title="出站">↑{fmtBytes(f.out_flow_bytes)}</span>
+                    </span>
+                    <span className="text-sm text-muted-foreground">{path}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

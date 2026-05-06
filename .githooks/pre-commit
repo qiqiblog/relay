@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Fast checks (~ a few seconds): cargo fmt + tsc on touched paths.
+# Heavy stuff (clippy/build) lives in pre-push.
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+# Collect staged files (Added/Copied/Modified/Renamed). Avoid `mapfile`
+# so we work on macOS's bash 3.2.
+staged="$(git diff --cached --name-only --diff-filter=ACMR)"
+[[ -z "$staged" ]] && exit 0
+
+has_rust=0
+has_web=0
+while IFS= read -r f; do
+  case "$f" in
+    *.rs|Cargo.toml|Cargo.lock) has_rust=1 ;;
+    web/*) has_web=1 ;;
+  esac
+done <<<"$staged"
+
+if [[ $has_rust -eq 1 ]]; then
+  echo "==> cargo fmt --all -- --check"
+  if ! cargo fmt --all -- --check; then
+    echo "✗ cargo fmt 检查失败。运行 'cargo fmt --all' 修复后重新提交。" >&2
+    exit 1
+  fi
+fi
+
+if [[ $has_web -eq 1 ]]; then
+  echo "==> bun x tsc --noEmit (web)"
+  ( cd web && bun x tsc --noEmit )
+fi
+
+exit 0

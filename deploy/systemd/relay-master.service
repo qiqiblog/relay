@@ -1,0 +1,40 @@
+[Unit]
+Description=Relay master (control plane)
+Documentation=https://github.com/unix-relay/relay
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/relay-master/relay-master.env
+ExecStart=/usr/local/bin/relay-master
+Restart=always
+RestartSec=3s
+
+# Run as a dedicated unprivileged user.
+User=relay
+Group=relay
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+
+# Allow binding to privileged ports (<1024) for the HTTP/gRPC listeners.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+LimitNOFILE=1048576
+
+# Persistent state (CA + server cert under /var/lib/relay-master/pki).
+StateDirectory=relay-master
+StateDirectoryMode=0700
+
+[Install]
+WantedBy=multi-user.target

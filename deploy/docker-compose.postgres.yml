@@ -1,0 +1,41 @@
+# PostgreSQL only, for users who don't already run a database.
+#
+#   curl -fsSL https://raw.githubusercontent.com/0xUnixIO/relay/main/deploy/docker-compose.postgres.yml \
+#     -o docker-compose.yml
+#   POSTGRES_PASSWORD=ChangeMe-superuser docker compose up -d
+#
+# Then bootstrap the relay role + db with the relay-master binary (no `psql`
+# dependency on the host):
+#
+#   sudo relay-master db init \
+#     --admin-url "postgres://postgres:ChangeMe-superuser@127.0.0.1:5432/postgres" \
+#     --password  "ChangeMe-relay"
+#
+# Finally point /etc/relay-master/relay-master.env at it:
+#
+#   MASTER_DATABASE_URL=postgres://relay:ChangeMe-relay@127.0.0.1:5432/relay
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: relay-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD before bringing the stack up}
+      POSTGRES_DB: postgres
+    # Bind to loopback only — relay-master runs on the host as a systemd
+    # service. If you need access from another host, change to "5432:5432"
+    # and front it with TLS / firewall.
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - relay-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  relay-pgdata:

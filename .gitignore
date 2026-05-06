@@ -1,0 +1,33 @@
+# rust
+/target
+**/*.rs.bk
+Cargo.lock.bak
+
+# env / secrets
+.env
+.env.local
+*.pem
+*.key
+
+# editor
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# frontend
+web/node_modules
+web/dist
+web/.turbo
+web/.vite
+web/bun.lockb.bak
+
+# logs
+*.log
+logs/
+.relay-dev.env
+.dev/
+
+# claude code local state
+.claude/worktrees/
+.claude/settings.local.json

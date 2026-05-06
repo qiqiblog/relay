@@ -1,0 +1,198 @@
+syntax = "proto3";
+
+package relay.v1;
+
+service NodeService {
+  rpc Channel(stream NodeMessage) returns (stream MasterMessage);
+}
+
+// Enroll lives on a separate (TLS, no client cert) listener. A node submits
+// its enrollment_token plus a CSR; on success the master returns a signed
+// client cert + the CA cert so the node can establish mTLS on the main
+// gRPC port. enrollment_token is single-use.
+service EnrollService {
+  rpc Enroll(EnrollRequest) returns (EnrollResponse);
+}
+
+message EnrollRequest {
+  string node_id = 1;
+  string enrollment_token = 2;
+  // PEM-encoded CSR. Subject and SAN fields in the CSR are ignored — only
+  // the public key is consumed; the master rebuilds subject/SAN from
+  // node_id.
+  string csr_pem = 3;
+}
+
+message EnrollResponse {
+  string node_cert_pem = 1;
+  string ca_cert_pem   = 2;
+  int64  not_after_unix_ms = 3;
+}
+
+message NodeMessage {
+  oneof payload {
+    Heartbeat heartbeat = 1;
+    ForwardStats stats = 2;
+    NodeEvent event = 3;
+    ConfigAck ack = 4;
+    ProbeResult probe_result = 5;
+    RenewCertRequest renew_cert = 6;
+    UpgradeReport upgrade_report = 7;
+  }
+}
+
+message MasterMessage {
+  oneof payload {
+    ConfigUpdate config = 1;
+    Command command = 2;
+    ProbeRequest probe = 3;
+    RenewCertResponse renew_cert = 4;
+  }
+}
+
+// Node asks master to re-sign a fresh keypair, sent over the existing mTLS
+// channel when the current cert is approaching expiry. The master rebuilds
+// the subject/SAN from the authenticated node_id (same as Enroll), so only
+// the public key in the CSR matters.
+message RenewCertRequest {
+  string csr_pem = 1;
+}
+
+message RenewCertResponse {
+  string node_cert_pem = 1;
+  int64  not_after_unix_ms = 2;
+  // Empty on success; non-empty means the master rejected the renewal and
+  // the node should keep its current cert and retry later.
+  string error = 3;
+}
+
+message Heartbeat {
+  int64 ts_unix_ms = 1;
+  double cpu_pct = 2;
+  uint64 mem_used_bytes = 3;
+  uint64 mem_total_bytes = 4;
+  uint32 active_connections = 5;
+  string agent_version = 6;
+  // Wire protocol version. M8 and earlier agents leave this 0/unset.
+  // M9+ agents send 2 (Forward/ForwardConfig/ForwardStats schema).
+  uint32 protocol_version = 7;
+  // Node-advertised capability tokens. Master uses these to gate features
+  // that older nodes don't understand. Known values:
+  //   "upgrade_v1" — node accepts UPGRADE_AGENT command and writes
+  //                  /var/lib/relay-node/upgrade-request.json for the
+  //                  root-level relay-node-updater service.
+  repeated string capabilities = 8;
+}
+
+// Sent by node upon receiving an UPGRADE_AGENT command. Master uses this
+// only for the early-failure / accepted signal. Final success is determined
+// by master observing a fresh heartbeat with the new version.
+message UpgradeReport {
+  int64 job_id = 1;
+  // "accepted" — node validated the command and wrote the request file.
+  // "failed"   — node rejected the command (bad tag/url, write error, etc.).
+  string state = 2;
+  string error = 3;
+}
+
+message ForwardStats {
+  string forward_id = 1;
+  uint32 hop_index = 2;
+  uint64 bytes_in = 3;
+  uint64 bytes_out = 4;
+  uint32 active_connections = 5;
+  uint64 total_connections = 6;
+}
+
+message NodeEvent {
+  enum Level { INFO = 0; WARN = 1; ERROR = 2; }
+  Level level = 1;
+  string code = 2;
+  string message = 3;
+  int64 ts_unix_ms = 4;
+}
+
+message ConfigAck {
+  uint64 config_version = 1;
+  bool success = 2;
+  string error = 3;
+}
+
+message ConfigUpdate {
+  uint64 version = 1;
+  repeated ForwardConfig forwards = 2;
+}
+
+// A single hop in a forward as deployed on this node.
+message ForwardConfig {
+  string forward_id = 1;
+  uint32 hop_index = 2;
+  Protocol protocol = 3;
+  // 0.0.0.0:port (or [::]:port) for this node to listen on.
+  string listen_addr = 4;
+  // For non-final hops: the next hop's listen_addr on the next node.
+  // For the final hop: the user-configured remote_addrs (load-balanced).
+  repeated string upstream_addrs = 5;
+  uint32 max_connections = 6;
+  // ACL: hop 0 inherits user-configured cidrs; hop>0 is restricted to
+  // the previous node's server_ip(s) by master at build time.
+  repeated string allow_cidrs = 7;
+  repeated string deny_cidrs = 8;
+  bool enabled = 9;
+  string lb_strategy = 10;
+  // Bumped by master when redeploy is triggered; ensures spec PartialEq
+  // detects a change so the node restarts the listener even when nothing
+  // else changed.
+  uint64 deploy_generation = 11;
+  // 0 = unlimited; otherwise total bandwidth cap in KB/s for this forward.
+  uint64 speed_limit_kbps = 12;
+}
+
+enum Protocol {
+  TCP = 0;
+  UDP = 1;
+}
+
+message Command {
+  enum Kind {
+    NOOP = 0;
+    RESTART_FORWARD = 1;
+    DRAIN_FORWARD = 2;
+    UPGRADE_AGENT = 3;
+  }
+  Kind kind = 1;
+  string target_id = 2;
+  map<string, string> args = 3;
+}
+
+// Master asks node to TCP-connect to `target` and report the dial latency.
+// `request_id` is opaque correlation; the node echoes it in ProbeResult.
+message ProbeRequest {
+  uint64 request_id = 1;
+  string target = 2;
+  uint32 timeout_ms = 3;
+  // Probe behaviour. Defaults to CONNECT for backward compat.
+  ProbeKind kind = 4;
+}
+
+enum ProbeKind {
+  // TCP connect to `target` (host:port). ok=true means dial succeeded.
+  CONNECT = 0;
+  // Attempt to bind a TCP listener on `target` (e.g. "0.0.0.0:18080") and
+  // immediately drop it. ok=true means bind succeeded → port FREE.
+  // ok=false with error containing "AddrInUse" means port is occupied.
+  BIND_TCP = 1;
+  // UDP socket bind. Same semantics as BIND_TCP.
+  BIND_UDP = 2;
+  // Bind a TCP listener on `target` and hold it open for `timeout_ms`,
+  // then release. Returns ok=true immediately once bound. Used by master to
+  // temporarily expose a port so another node can Connect-probe it.
+  BIND_TCP_HOLD = 3;
+}
+
+message ProbeResult {
+  uint64 request_id = 1;
+  bool ok = 2;
+  uint64 latency_us = 3;
+  string error = 4;
+}

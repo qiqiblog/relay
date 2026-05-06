@@ -1,0 +1,55 @@
+[package]
+name = "relay-master"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "relay-master"
+path = "src/main.rs"
+
+[dependencies]
+relay-proto.workspace = true
+relay-common.workspace = true
+
+tokio.workspace = true
+tokio-stream.workspace = true
+futures.workspace = true
+async-trait.workspace = true
+
+tonic.workspace = true
+prost.workspace = true
+
+axum.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+
+sqlx.workspace = true
+
+serde.workspace = true
+serde_json.workspace = true
+
+tracing.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+
+clap.workspace = true
+dotenvy.workspace = true
+chrono.workspace = true
+
+jsonwebtoken.workspace = true
+argon2.workspace = true
+rand.workspace = true
+hex.workspace = true
+futures-core.workspace = true
+rcgen = { version = "0.13", features = ["x509-parser"] }
+x509-parser = "0.16"
+time = "0.3"
+sha2 = "0.11.0"
+base64 = "0.22.1"
+rust-embed = { version = "8.5", features = ["mime-guess"] }
+redis = { version = "0.27", default-features = false, features = ["tokio-comp", "connection-manager"] }
+reqwest.workspace = true
+
+[dev-dependencies]
+tempfile = "3.27.0"

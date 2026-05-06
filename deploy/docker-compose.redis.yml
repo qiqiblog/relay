@@ -1,0 +1,40 @@
+# Redis only, used by relay-master for lightweight caching (probe debounce, etc.).
+#
+#   curl -fsSL https://raw.githubusercontent.com/0xUnixIO/relay/main/deploy/docker-compose.redis.yml \
+#     -o docker-compose.redis.yml
+#   REDIS_PASSWORD=ChangeMe-redis docker compose -f docker-compose.redis.yml up -d
+#
+# Then point /etc/relay-master/relay-master.env at it:
+#
+#   MASTER_REDIS_URL=redis://:ChangeMe-redis@127.0.0.1:6379/0
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: relay-redis
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --requirepass
+      - ${REDIS_PASSWORD:?set REDIS_PASSWORD before bringing the stack up}
+      - --appendonly
+      - "no"
+      - --save
+      - ""
+    # Bind to loopback only — relay-master runs on the host as a systemd
+    # service. Redis stores only short-lived caches (5s probe debounce); no
+    # durability needed.
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - relay-redisdata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD before bringing the stack up}
+
+volumes:
+  relay-redisdata:

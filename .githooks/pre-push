@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# Heavier validation before pushing: clippy + web build.
+# Skip with --no-verify if you really need to.
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+range=""
+tag_being_pushed=""
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [[ -z "$local_sha" ]] && continue
+  # Detect tag pushes (refs/tags/v*)
+  if [[ "$local_ref" == refs/tags/v* ]]; then
+    tag_being_pushed="${local_ref#refs/tags/}"
+  fi
+  if [[ "$remote_sha" =~ ^0+$ ]]; then
+    range="$local_sha"
+  else
+    range="$remote_sha..$local_sha"
+  fi
+done
+
+# If a version tag is being pushed, verify it matches Cargo.toml
+if [[ -n "$tag_being_pushed" ]]; then
+  tag_ver="${tag_being_pushed#v}"
+  cargo_ver=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+  if [[ "$tag_ver" != "$cargo_ver" ]]; then
+    echo "✗ Tag $tag_being_pushed does not match Cargo.toml version ($cargo_ver)" >&2
+    echo "  Update Cargo.toml first, or use 'make release' which handles this automatically." >&2
+    exit 1
+  fi
+  echo "✓ Tag $tag_being_pushed matches Cargo.toml ($cargo_ver)"
+fi
+
+changed=""
+if [[ -n "$range" ]]; then
+  changed="$(git diff --name-only "$range" 2>/dev/null || true)"
+fi
+
+run_rust=1
+run_web=1
+if [[ -n "$changed" ]]; then
+  run_rust=0; run_web=0
+  while IFS= read -r f; do
+    case "$f" in
+      *.rs|Cargo.toml|Cargo.lock|crates/*) run_rust=1 ;;
+      web/*) run_web=1 ;;
+    esac
+  done <<<"$changed"
+fi
+
+if [[ $run_rust -eq 1 ]]; then
+  echo "==> cargo fmt --all -- --check"
+  cargo fmt --all -- --check
+  echo "==> cargo clippy --workspace --all-targets -- -D warnings"
+  cargo clippy --workspace --all-targets -- -D warnings
+fi
+
+if [[ $run_web -eq 1 ]]; then
+  echo "==> bun run typecheck"
+  ( cd web && bun run typecheck )
+fi
+
+exit 0
