@@ -10,7 +10,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { ProtocolSetBadge } from "@/components/ui/protocol-set-badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -187,7 +186,6 @@ export default function TunnelsPage() {
             <Table className="min-w-[640px] table-fixed">
               <colgroup>
                 <col style={{ width: "10rem" }} />
-                <col style={{ width: "5rem" }} />
                 <col />
                 <col style={{ width: "5rem" }} />
                 <col style={{ width: "5rem" }} />
@@ -196,7 +194,6 @@ export default function TunnelsPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>名称</TableHead>
-                  <TableHead>协议</TableHead>
                   <TableHead>路径</TableHead>
                   <TableHead>转发数</TableHead>
                   <TableHead>启用</TableHead>
@@ -206,7 +203,7 @@ export default function TunnelsPage() {
               <TableBody>
                 {tunnels.length === 0 ? (
                   <TableRow className="hover:bg-transparent even:bg-transparent">
-                    <TableCell colSpan={6} className="text-center">
+                    <TableCell colSpan={5} className="text-center">
                       <EmptyState icon={RouteIcon} title="暂无隧道" description="点击右上角「新建隧道」按钮创建。" compact />
                     </TableCell>
                   </TableRow>
@@ -233,9 +230,6 @@ export default function TunnelsPage() {
                     return (
                     <TableRow key={t.id}>
                       <TableCell className="font-medium truncate" title={t.name}>{t.name}</TableCell>
-                      <TableCell>
-                        <ProtocolSetBadge protocols={t.protocols} />
-                      </TableCell>
                       <TableCell className="text-xs truncate" title={hopTitle}>
                         {hopTitle}
                       </TableCell>
