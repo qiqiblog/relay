@@ -139,7 +139,7 @@ case "$OS-$ARCH" in
 esac
 
 GH="${MIRROR}https://github.com"
-GH_API="${MIRROR}https://api.github.com"
+GH_API="https://api.github.com"
 GH_RAW="${MIRROR}https://raw.githubusercontent.com"
 
 command -v curl       >/dev/null || die "curl is required"
