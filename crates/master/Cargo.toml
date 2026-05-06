@@ -50,6 +50,7 @@ base64 = "0.22.1"
 rust-embed = { version = "8.5", features = ["mime-guess"] }
 redis = { version = "0.27", default-features = false, features = ["tokio-comp", "connection-manager"] }
 reqwest.workspace = true
+flate2.workspace = true
 
 [dev-dependencies]
 tempfile = "3.27.0"

@@ -21,6 +21,7 @@
 #   --enroll <url>         master Enroll TLS endpoint (default: master host with :7444)
 #   --version <tag>        pin a specific release tag (default: latest)
 #   --repo <owner/name>    override the GitHub repo (default: 0xUnixIO/relay)
+#   --mirror <url>         GitHub 镜像前缀，用于国内加速（如 https://ghproxy.com/）
 #   --update               upgrade-only: keep existing env / pki, no enrollment args needed
 #   --non-interactive      never prompt (for automated callers like the updater)
 #   --no-start             install but don't enable/start the service
@@ -38,6 +39,7 @@ NODE_ID=""
 NODE_TOKEN=""
 NODE_CA_CERT_B64=""
 ENROLL_ENDPOINT=""
+MIRROR=""
 START=1
 UNINSTALL=0
 UPDATE_ONLY=0
@@ -57,6 +59,7 @@ while [[ $# -gt 0 ]]; do
     --version)         VERSION="$2"; shift 2 ;;
     --prerelease)      INCLUDE_PRERELEASE=1; shift ;;
     --repo)            REPO="$2"; shift 2 ;;
+    --mirror)          MIRROR="${2%/}/"; shift 2 ;;
     --no-start)        START=0; shift ;;
     --uninstall)       UNINSTALL=1; shift ;;
     --update)          UPDATE_ONLY=1; shift ;;
@@ -135,6 +138,10 @@ case "$OS-$ARCH" in
   *) die "unsupported platform: $OS $ARCH" ;;
 esac
 
+GH="${MIRROR}https://github.com"
+GH_API="${MIRROR}https://api.github.com"
+GH_RAW="${MIRROR}https://raw.githubusercontent.com"
+
 command -v curl       >/dev/null || die "curl is required"
 command -v tar        >/dev/null || die "tar is required"
 command -v sha256sum  >/dev/null || die "sha256sum is required (coreutils)"
@@ -142,19 +149,19 @@ command -v systemctl  >/dev/null || die "systemd is required"
 
 if [[ "$VERSION" == "latest" ]]; then
   if [[ "$INCLUDE_PRERELEASE" -eq 1 ]]; then
-    VERSION="$(curl -fsSL "https://api.github.com/repos/$REPO/releases?per_page=20" \
+    VERSION="$(curl -fsSL "${GH_API}/repos/$REPO/releases?per_page=20" \
       | python3 -c "import sys,json; rs=[r for r in json.load(sys.stdin) if r['prerelease']]; print(rs[0]['tag_name'] if rs else '')")"
     [[ -n "$VERSION" ]] || die "failed to resolve latest pre-release"
     log "latest pre-release: $VERSION"
   else
-    VERSION="$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" \
+    VERSION="$(curl -fsSL "${GH_API}/repos/$REPO/releases/latest" \
       | grep -oE '"tag_name": *"[^"]+"' | head -1 | cut -d'"' -f4)"
     [[ -n "$VERSION" ]] || die "failed to resolve latest version (rate-limited?)"
   fi
 fi
 
 ARCHIVE="relay-${VERSION}-${TARGET}.tar.gz"
-BASE="https://github.com/$REPO/releases/download/$VERSION"
+BASE="${GH}/$REPO/releases/download/$VERSION"
 
 log "installing relay-node $VERSION for $TARGET"
 
@@ -180,17 +187,13 @@ if systemctl is-active --quiet "$UNIT_NAME" 2>/dev/null; then
   RESTART=1
 fi
 
-DEST_DIR="$LIB_DIR/$BIN_NAME-$VERSION"
-log "installing $DEST_DIR/$BIN_NAME"
-mkdir -p "$DEST_DIR"
-install -m 0755 "$DIR/$BIN_NAME" "$DEST_DIR/$BIN_NAME"
+log "installing $LIB_DIR/$BIN_NAME"
+mkdir -p "$LIB_DIR"
+install -m 0755 "$DIR/$BIN_NAME" "$LIB_DIR/$BIN_NAME.new"
+mv -f "$LIB_DIR/$BIN_NAME.new" "$LIB_DIR/$BIN_NAME"
 
-# If a real (non-symlink) binary is at the link path, remove it before
-# creating the symlink. Atomic-replace via temporary symlink + mv -T.
-if [[ -e "$BIN_LINK" && ! -L "$BIN_LINK" ]]; then
-  rm -f "$BIN_LINK"
-fi
-ln -sfn "$DEST_DIR/$BIN_NAME" "${BIN_LINK}.new"
+# 原子替换 PATH 下的软链接
+ln -sfn "$LIB_DIR/$BIN_NAME" "${BIN_LINK}.new"
 mv -Tf "${BIN_LINK}.new" "$BIN_LINK"
 
 if ! id relay >/dev/null 2>&1; then
@@ -248,17 +251,17 @@ DEPLOY_REF="$VERSION"
 case "$DEPLOY_REF" in v*) ;; *) DEPLOY_REF="main" ;; esac
 
 log "installing systemd unit"
-curl -fsSL "https://raw.githubusercontent.com/$REPO/$DEPLOY_REF/deploy/systemd/${UNIT_NAME}.service" \
+curl -fsSL "${GH_RAW}/$REPO/$DEPLOY_REF/deploy/systemd/${UNIT_NAME}.service" \
      -o "/etc/systemd/system/${UNIT_NAME}.service"
 
 log "installing relay-node-updater (root-level upgrade helper)"
 mkdir -p "$LIB_DIR"
-curl -fsSL "https://raw.githubusercontent.com/$REPO/$DEPLOY_REF/deploy/systemd/${UNIT_NAME}-updater" \
+curl -fsSL "${GH_RAW}/$REPO/$DEPLOY_REF/deploy/systemd/${UNIT_NAME}-updater" \
      -o "$LIB_DIR/${UNIT_NAME}-updater"
 chmod 0755 "$LIB_DIR/${UNIT_NAME}-updater"
-curl -fsSL "https://raw.githubusercontent.com/$REPO/$DEPLOY_REF/deploy/systemd/${UNIT_NAME}-updater.service" \
+curl -fsSL "${GH_RAW}/$REPO/$DEPLOY_REF/deploy/systemd/${UNIT_NAME}-updater.service" \
      -o "/etc/systemd/system/${UNIT_NAME}-updater.service"
-curl -fsSL "https://raw.githubusercontent.com/$REPO/$DEPLOY_REF/deploy/systemd/${UNIT_NAME}-updater.path" \
+curl -fsSL "${GH_RAW}/$REPO/$DEPLOY_REF/deploy/systemd/${UNIT_NAME}-updater.path" \
      -o "/etc/systemd/system/${UNIT_NAME}-updater.path"
 
 systemctl daemon-reload

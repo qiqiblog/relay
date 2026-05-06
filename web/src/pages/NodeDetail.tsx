@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import useSWR from "swr";
-import { timeAgo, cn } from "@/lib/utils";
+import { timeAgo } from "@/lib/utils";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { ArrowLeft, RefreshCw, Copy, Check, Save, Plus, X, ArrowUp, ArrowDown, ArrowUpCircle, Trash2, MoreHorizontal } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -98,7 +98,7 @@ export default function NodeDetail() {
     { refreshInterval: 5000 },
   );
   const [cmdCopied, setCmdCopied] = useState(false);
-  const [reenrollRegion, setReenrollRegion] = useState<"global" | "cn">("global");
+  const [mirrorUrl, setMirrorUrl] = useState("");
   const [ipsInput, setIpsInput] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [prStart, setPrStart] = useState<number | "">("");
@@ -266,22 +266,24 @@ export default function NodeDetail() {
     }
   };
 
-  const reenrollCmd = (r: RotateTokenResp, region: "global" | "cn" = reenrollRegion): string => {
+  const reenrollCmd = (r: RotateTokenResp, mirror = mirrorUrl): string => {
     if (!serverInfo) return "// fetching server info…";
-    const scriptUrl = region === "cn"
-      ? `${window.location.origin}/scripts/install-node.sh`
-      : "https://raw.githubusercontent.com/0xUnixIO/relay/main/install-node.sh";
-    return [
-      `bash <(curl -fsSL ${scriptUrl}) \\`,
+    const lines = [
+      `bash <(curl -fsSL https://raw.githubusercontent.com/0xUnixIO/relay/main/install-node.sh) \\`,
       `  --master ${serverInfo.master_endpoint} \\`,
       `  --node-id ${r.id} \\`,
       `  --token ${r.enrollment_token} \\`,
       `  --ca-cert ${serverInfo.ca_cert_b64}`,
-    ].join("\n");
+    ];
+    if (mirror.trim()) {
+      lines[lines.length - 1] += " \\";
+      lines.push(`  --mirror ${mirror.trim()}`);
+    }
+    return lines.join("\n");
   };
   const copyReenrollCmd = () => {
     if (!rotated) return;
-    navigator.clipboard.writeText(reenrollCmd(rotated, reenrollRegion));
+    navigator.clipboard.writeText(reenrollCmd(rotated));
     setCmdCopied(true);
     setTimeout(() => setCmdCopied(false), 2000);
   };
@@ -767,28 +769,18 @@ export default function NodeDetail() {
           </DialogHeader>
           {rotated && (
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <Label className="text-sm uppercase text-muted-foreground">安装命令</Label>
-                <div className="flex gap-0.5 rounded-lg bg-muted p-0.5 text-xs">
-                  {(["global", "cn"] as const).map((r) => (
-                    <button
-                      key={r}
-                      onClick={() => setReenrollRegion(r)}
-                      className={cn(
-                        "rounded-md px-2.5 py-1 font-medium transition-colors",
-                        reenrollRegion === r
-                          ? "bg-background text-foreground shadow-sm"
-                          : "text-muted-foreground hover:text-foreground"
-                      )}
-                    >
-                      {r === "global" ? "国际线路" : "国内线路"}
-                    </button>
-                  ))}
-                </div>
+              <Label className="text-sm uppercase text-muted-foreground">安装命令</Label>
+              <div className="mt-2 mb-2">
+                <Input
+                  placeholder="GitHub 镜像前缀（可选，如 https://ghproxy.com/）"
+                  value={mirrorUrl}
+                  onChange={(e) => setMirrorUrl(e.target.value)}
+                  className="h-8 text-xs"
+                />
               </div>
               <ScrollArea className="h-64 rounded-md border bg-muted">
                 <pre className="whitespace-pre-wrap break-all p-3 text-xs">
-                  {reenrollCmd(rotated, reenrollRegion)}
+                  {reenrollCmd(rotated)}
                 </pre>
               </ScrollArea>
               <Button variant="outline" size="sm" className="mt-2" onClick={copyReenrollCmd}>

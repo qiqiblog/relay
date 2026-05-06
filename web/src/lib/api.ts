@@ -455,6 +455,18 @@ export const Api = {
       body: JSON.stringify({ brand_name }),
     }),
 
+  // ---------- R2 Backup ----------
+  getR2BackupConfig: () => api<R2BackupConfigResp>("/api/v1/system/backup/r2"),
+  setR2BackupConfig: (req: R2BackupConfigReq) =>
+    api<R2BackupConfigResp>("/api/v1/system/backup/r2", {
+      method: "PUT",
+      body: JSON.stringify(req),
+    }),
+  triggerBackup: () =>
+    api<void>("/api/v1/system/backup/trigger", { method: "POST" }),
+  listBackupJobs: (limit = 20) =>
+    api<BackupJob[]>(`/api/v1/system/backup/jobs?limit=${limit}`),
+
   // ---------- User Groups ----------
   listUserGroups: () => api<UserGroup[]>("/api/v1/user-groups"),
   createUserGroup: (body: { name: string; remark?: string }) =>
@@ -559,6 +571,40 @@ export interface SystemVersionResp {
 
 export interface UpgradeChannelResp {
   channel: string;
+}
+
+export interface R2BackupConfigResp {
+  configured: boolean;
+  account_id: string;
+  bucket_name: string;
+  access_key_id: string;
+  /** 始终脱敏，有值时为 "***" */
+  secret_access_key: string;
+  path_prefix: string;
+  schedule_hours: number;
+}
+
+export interface R2BackupConfigReq {
+  account_id: string;
+  bucket_name: string;
+  access_key_id: string;
+  /** 留空表示不修改已存储的密钥 */
+  secret_access_key?: string;
+  path_prefix?: string;
+  schedule_hours?: number;
+}
+
+export type BackupJobState = "running" | "succeeded" | "failed";
+
+export interface BackupJob {
+  id: number;
+  state: BackupJobState;
+  triggered_by: "schedule" | "manual";
+  object_key: string | null;
+  size_bytes: number | null;
+  error: string | null;
+  started_at: string;
+  completed_at: string | null;
 }
 
 export type UpgradeJobState =

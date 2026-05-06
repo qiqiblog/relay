@@ -110,6 +110,12 @@ pub async fn serve(addr: SocketAddr, state: AppState) -> anyhow::Result<()> {
         )
         .route("/api/v1/upgrade_jobs/:id", get(get_upgrade_job))
         .route("/api/v1/system/branding", axum::routing::put(put_branding))
+        .route(
+            "/api/v1/system/backup/r2",
+            get(get_r2_backup_config).put(put_r2_backup_config),
+        )
+        .route("/api/v1/system/backup/trigger", post(trigger_backup))
+        .route("/api/v1/system/backup/jobs", get(list_backup_jobs))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             require_admin_layer,
@@ -4089,6 +4095,163 @@ async fn put_branding(
     }))
 }
 
+// ---------- R2 Backup Config ----------
+
+use crate::backup::{read_r2_config, BackupJob, R2BackupConfig, R2_CONFIG_KEY};
+
+#[derive(Serialize)]
+struct R2BackupConfigResp {
+    configured: bool,
+    account_id: String,
+    bucket_name: String,
+    access_key_id: String,
+    /// 始终脱敏，有值时返回 "***"，否则返回空字符串
+    secret_access_key: String,
+    path_prefix: String,
+    schedule_hours: u32,
+}
+
+#[derive(Deserialize)]
+struct R2BackupConfigReq {
+    account_id: String,
+    bucket_name: String,
+    access_key_id: String,
+    /// 留空表示不修改已保存的密钥
+    secret_access_key: Option<String>,
+    #[serde(default)]
+    path_prefix: String,
+    /// 0 = 禁用定时备份
+    #[serde(default)]
+    schedule_hours: u32,
+}
+
+fn to_r2_resp(c: &R2BackupConfig) -> R2BackupConfigResp {
+    R2BackupConfigResp {
+        configured: true,
+        account_id: c.account_id.clone(),
+        bucket_name: c.bucket_name.clone(),
+        access_key_id: c.access_key_id.clone(),
+        secret_access_key: if c.secret_access_key.is_empty() {
+            String::new()
+        } else {
+            "***".to_string()
+        },
+        path_prefix: c.path_prefix.clone(),
+        schedule_hours: c.schedule_hours,
+    }
+}
+
+async fn get_r2_backup_config(State(s): State<AppState>) -> ApiResult<Json<R2BackupConfigResp>> {
+    let resp = match read_r2_config(&s.db).await? {
+        None => R2BackupConfigResp {
+            configured: false,
+            account_id: String::new(),
+            bucket_name: String::new(),
+            access_key_id: String::new(),
+            secret_access_key: String::new(),
+            path_prefix: String::new(),
+            schedule_hours: 0,
+        },
+        Some(ref c) => to_r2_resp(c),
+    };
+    Ok(Json(resp))
+}
+
+async fn put_r2_backup_config(
+    State(s): State<AppState>,
+    Json(req): Json<R2BackupConfigReq>,
+) -> ApiResult<Json<R2BackupConfigResp>> {
+    if req.account_id.trim().is_empty() {
+        return Err(ApiError::new(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "account_id 不能为空",
+        ));
+    }
+    if req.bucket_name.trim().is_empty() {
+        return Err(ApiError::new(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "bucket_name 不能为空",
+        ));
+    }
+    if req.access_key_id.trim().is_empty() {
+        return Err(ApiError::new(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "access_key_id 不能为空",
+        ));
+    }
+
+    let secret = match req.secret_access_key.as_deref() {
+        Some(s) if !s.is_empty() => s.to_string(),
+        _ => read_r2_config(&s.db)
+            .await?
+            .map(|c| c.secret_access_key)
+            .unwrap_or_default(),
+    };
+
+    let cfg = R2BackupConfig {
+        account_id: req.account_id.trim().to_string(),
+        bucket_name: req.bucket_name.trim().to_string(),
+        access_key_id: req.access_key_id.trim().to_string(),
+        secret_access_key: secret,
+        path_prefix: req.path_prefix.trim().to_string(),
+        schedule_hours: req.schedule_hours,
+    };
+    let json_val = serde_json::to_string(&cfg)
+        .map_err(|e| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    sqlx::query(
+        "INSERT INTO app_settings (key, value) VALUES ($1, $2)
+         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()",
+    )
+    .bind(R2_CONFIG_KEY)
+    .bind(&json_val)
+    .execute(&s.db)
+    .await?;
+
+    Ok(Json(to_r2_resp(&cfg)))
+}
+
+async fn trigger_backup(State(s): State<AppState>) -> ApiResult<StatusCode> {
+    match crate::backup::read_r2_config(&s.db).await? {
+        Some(c) if !c.account_id.is_empty() => {}
+        _ => {
+            return Err(ApiError::new(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "R2 备份尚未配置，请先填写配置",
+            ));
+        }
+    }
+    s.backup_trigger.notify_one();
+    Ok(StatusCode::ACCEPTED)
+}
+
+#[derive(Deserialize)]
+struct BackupJobsQuery {
+    #[serde(default = "default_limit")]
+    limit: i64,
+}
+
+fn default_limit() -> i64 {
+    20
+}
+
+async fn list_backup_jobs(
+    State(s): State<AppState>,
+    axum::extract::Query(q): axum::extract::Query<BackupJobsQuery>,
+) -> ApiResult<Json<Vec<BackupJob>>> {
+    let limit = q.limit.clamp(1, 100);
+    let jobs: Vec<BackupJob> = sqlx::query_as(
+        "SELECT id, state, triggered_by, object_key, size_bytes, error, started_at, completed_at
+           FROM backup_jobs
+          ORDER BY started_at DESC
+          LIMIT $1",
+    )
+    .bind(limit)
+    .fetch_all(&s.db)
+    .await?;
+    Ok(Json(jobs))
+}
+
 #[derive(Deserialize)]
 struct UpgradeNodeReq {
     /// "stable" / "rc" / "vX.Y.Z[-rc.*]"
@@ -4199,7 +4362,7 @@ async fn create_node_upgrade(
     .bind(&node_id)
     .bind(from_version.as_deref())
     .bind(&resolved.tag)
-    .bind(claims.sub)
+    .bind(caller_id(&claims)?)
     .fetch_one(&s.db)
     .await;
     let job: UpgradeJob = match insert_res {

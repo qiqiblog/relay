@@ -2186,6 +2186,7 @@ dependencies = [
  "chrono",
  "clap",
  "dotenvy",
+ "flate2",
  "futures",
  "futures-core",
  "hex",

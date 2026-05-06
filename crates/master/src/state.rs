@@ -4,7 +4,7 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use redis::aio::ConnectionManager;
 use sqlx::PgPool;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::{Mutex, Notify, RwLock};
 
 use crate::config::Config;
 use crate::models::Node;
@@ -43,6 +43,8 @@ pub struct AppState {
     pub availability_seen: Arc<Mutex<HashSet<(String, i64)>>>,
     /// GitHub releases resolver + cache for the upgrade feature.
     pub upgrade_resolver: UpgradeResolver,
+    /// 手动触发备份的通知信道。
+    pub backup_trigger: Arc<Notify>,
 }
 
 impl AppState {
@@ -58,6 +60,7 @@ impl AppState {
             node_runtime: Arc::new(RwLock::new(HashMap::new())),
             availability_seen: Arc::new(Mutex::new(HashSet::new())),
             upgrade_resolver: UpgradeResolver::new(crate::upgrade::DEFAULT_REPO),
+            backup_trigger: Arc::new(Notify::new()),
         }
     }
 

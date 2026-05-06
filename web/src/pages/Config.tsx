@@ -1,9 +1,9 @@
 import { useState } from "react";
 import useSWR from "swr";
 import { toast } from "sonner";
-import { Copy, Check } from "lucide-react";
+import { Copy, Check, Eye, EyeOff, Play, RefreshCw } from "lucide-react";
 import ReactMarkdown from "react-markdown";
-import { Api, ApiError } from "@/lib/api";
+import { Api, ApiError, type BackupJob } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +23,11 @@ export default function ConfigPage() {
     "system-branding",
     Api.getBranding,
   );
+  const { data: r2cfg, mutate: mutateR2 } = useSWR("r2-backup-config", Api.getR2BackupConfig);
+  const { data: backupJobs, mutate: mutateJobs } = useSWR(
+    "backup-jobs",
+    () => Api.listBackupJobs(20),
+  );
 
   const [enabled, setEnabled] = useState<boolean | undefined>(undefined);
   const [title, setTitle] = useState<string | undefined>(undefined);
@@ -33,6 +38,18 @@ export default function ConfigPage() {
   const [upgradeRegion, setUpgradeRegion] = useState<"global" | "cn">("global");
   const [brandDraft, setBrandDraft] = useState<string | undefined>(undefined);
   const [brandSaving, setBrandSaving] = useState(false);
+
+  const [r2Draft, setR2Draft] = useState<{
+    account_id: string;
+    bucket_name: string;
+    access_key_id: string;
+    secret_access_key: string;
+    path_prefix: string;
+    schedule_hours: number;
+  } | null>(null);
+  const [r2Saving, setR2Saving] = useState(false);
+  const [showSecret, setShowSecret] = useState(false);
+  const [triggering, setTriggering] = useState(false);
 
   const effectiveEnabled = enabled ?? cfg?.announcement_enabled ?? false;
   const effectiveTitle = title ?? cfg?.announcement_title ?? "";
@@ -107,6 +124,64 @@ export default function ConfigPage() {
     } finally {
       setBrandSaving(false);
     }
+  };
+
+  const r2Fields = r2Draft ?? {
+    account_id: r2cfg?.account_id ?? "",
+    bucket_name: r2cfg?.bucket_name ?? "",
+    access_key_id: r2cfg?.access_key_id ?? "",
+    secret_access_key: "",
+    path_prefix: r2cfg?.path_prefix ?? "",
+    schedule_hours: r2cfg?.schedule_hours ?? 0,
+  };
+  const saveR2 = async () => {
+    setR2Saving(true);
+    try {
+      await Api.setR2BackupConfig({
+        account_id: r2Fields.account_id,
+        bucket_name: r2Fields.bucket_name,
+        access_key_id: r2Fields.access_key_id,
+        secret_access_key: r2Fields.secret_access_key || undefined,
+        path_prefix: r2Fields.path_prefix || undefined,
+        schedule_hours: r2Fields.schedule_hours,
+      });
+      await mutateR2();
+      setR2Draft(null);
+      setShowSecret(false);
+      toast.success("R2 备份配置已保存");
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : String(e));
+    } finally {
+      setR2Saving(false);
+    }
+  };
+
+  const triggerNow = async () => {
+    setTriggering(true);
+    try {
+      await Api.triggerBackup();
+      toast.success("备份任务已提交，正在后台执行");
+      setTimeout(() => mutateJobs(), 1500);
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : String(e));
+    } finally {
+      setTriggering(false);
+    }
+  };
+
+  const fmtSize = (bytes: number | null) => {
+    if (bytes === null) return "—";
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+  };
+
+  const jobStateBadge = (job: BackupJob) => {
+    if (job.state === "succeeded")
+      return <Badge variant="outline" className="text-green-600 border-green-300 text-xs">成功</Badge>;
+    if (job.state === "failed")
+      return <Badge variant="outline" className="text-red-500 border-red-300 text-xs">失败</Badge>;
+    return <Badge variant="outline" className="text-amber-500 border-amber-300 text-xs">执行中</Badge>;
   };
 
   return (
@@ -283,6 +358,146 @@ export default function ConfigPage() {
               最新稳定版：{sysVersion.latest_stable.tag}
               {sysVersion?.latest_rc?.tag && <> · 最新预发布：{sysVersion.latest_rc.tag}</>}
             </p>
+          )}
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            备份存储（Cloudflare R2）
+            {r2cfg?.configured ? (
+              <Badge variant="outline" className="text-xs text-green-600 border-green-300">已配置</Badge>
+            ) : (
+              <Badge variant="outline" className="text-xs text-muted-foreground">未配置</Badge>
+            )}
+          </CardTitle>
+          <CardDescription>
+            配置 Cloudflare R2 作为数据库备份的存储目标。密钥保存后不再回显。
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Account ID</Label>
+              <Input
+                placeholder="Cloudflare Account ID"
+                value={r2Fields.account_id}
+                onChange={(e) => setR2Draft({ ...r2Fields, account_id: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Bucket 名称</Label>
+              <Input
+                placeholder="my-backup-bucket"
+                value={r2Fields.bucket_name}
+                onChange={(e) => setR2Draft({ ...r2Fields, bucket_name: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Access Key ID</Label>
+              <Input
+                placeholder="R2 Access Key ID"
+                value={r2Fields.access_key_id}
+                onChange={(e) => setR2Draft({ ...r2Fields, access_key_id: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Secret Access Key</Label>
+              <div className="relative">
+                <Input
+                  type={showSecret ? "text" : "password"}
+                  placeholder={r2cfg?.configured ? "留空保留原密钥" : "R2 Secret Access Key"}
+                  value={r2Fields.secret_access_key}
+                  onChange={(e) => setR2Draft({ ...r2Fields, secret_access_key: e.target.value })}
+                  className="pr-9"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowSecret((v) => !v)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  {showSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>路径前缀 <span className="text-muted-foreground text-xs">（可选）</span></Label>
+              <Input
+                placeholder="backups/"
+                value={r2Fields.path_prefix}
+                onChange={(e) => setR2Draft({ ...r2Fields, path_prefix: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>定时备份间隔（小时，0 禁用）</Label>
+              <Input
+                type="number"
+                min={0}
+                placeholder="0"
+                value={r2Fields.schedule_hours === 0 ? "" : r2Fields.schedule_hours}
+                onChange={(e) => {
+                  const v = Math.max(0, Math.floor(Number(e.target.value) || 0));
+                  setR2Draft({ ...r2Fields, schedule_hours: v });
+                }}
+              />
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <Button onClick={saveR2} disabled={r2Saving}>
+              {r2Saving ? "保存中…" : "保存配置"}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={triggerNow}
+              disabled={triggering || !r2cfg?.configured}
+            >
+              {triggering
+                ? <><RefreshCw className="h-4 w-4 mr-1.5 animate-spin" />备份中…</>
+                : <><Play className="h-4 w-4 mr-1.5" />立即备份</>
+              }
+            </Button>
+          </div>
+
+          {backupJobs && backupJobs.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground font-medium">备份历史（最近 20 条）</p>
+              <div className="rounded-md border overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b bg-muted/40">
+                      <th className="px-3 py-2 text-left font-medium text-muted-foreground">时间</th>
+                      <th className="px-3 py-2 text-left font-medium text-muted-foreground">触发方式</th>
+                      <th className="px-3 py-2 text-left font-medium text-muted-foreground">状态</th>
+                      <th className="px-3 py-2 text-left font-medium text-muted-foreground">大小</th>
+                      <th className="px-3 py-2 text-left font-medium text-muted-foreground">对象键</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {backupJobs.map((job) => (
+                      <tr key={job.id} className="border-b last:border-0 hover:bg-muted/20">
+                        <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">
+                          {new Date(job.started_at).toLocaleString("zh-CN", { hour12: false })}
+                        </td>
+                        <td className="px-3 py-2">
+                          {job.triggered_by === "manual" ? "手动" : "定时"}
+                        </td>
+                        <td className="px-3 py-2">{jobStateBadge(job)}</td>
+                        <td className="px-3 py-2 tabular-nums">{fmtSize(job.size_bytes)}</td>
+                        <td className="px-3 py-2 font-mono text-muted-foreground max-w-[200px] truncate" title={job.object_key ?? ""}>
+                          {job.state === "failed"
+                            ? <span className="text-red-500">{job.error}</span>
+                            : (job.object_key ?? "—")}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>
