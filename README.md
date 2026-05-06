@@ -101,8 +101,6 @@ bash <(curl -fsSL https://raw.githubusercontent.com/0xUnixIO/relay/main/install.
 
 - [部署、升级、卸载](./docs/deployment.md)
 - [本地开发](./docs/development.md)
-- [Roadmap](./ROADMAP.md)
-- [Changelog](./CHANGELOG.md)
 
 ---
 
