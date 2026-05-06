@@ -282,11 +282,6 @@ export default function Dashboard() {
           <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">活跃转发</h2>
           <div className="rounded-lg border divide-y">
             {active.map((f) => {
-              const path = f.ports
-                .slice()
-                .sort((a, b) => a.hop_index - b.hop_index)
-                .map((p) => nodes.find((n) => n.id === p.node_id)?.hostname || p.node_id)
-                .join(" → ");
               const firstUpstream = f.remote_addrs?.[0] ?? "—";
               return (
                 <div key={f.id} className="flex items-center justify-between px-4 py-3 text-sm">
@@ -306,7 +301,6 @@ export default function Dashboard() {
                       <span title="入站">↓{fmtBytes(f.in_flow_bytes)}</span>
                       <span title="出站">↑{fmtBytes(f.out_flow_bytes)}</span>
                     </span>
-                    <span className="text-sm text-muted-foreground">{path}</span>
                   </div>
                 </div>
               );
