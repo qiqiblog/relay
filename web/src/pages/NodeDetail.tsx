@@ -794,7 +794,7 @@ export default function NodeDetail() {
           {rotated && (
             <div>
               <Label className="text-sm uppercase text-muted-foreground">安装命令</Label>
-              <ScrollArea className="mt-1 max-h-64 rounded-md border bg-muted">
+              <ScrollArea className="mt-1 h-64 rounded-md border bg-muted">
                 <pre className="whitespace-pre-wrap break-all p-3 text-xs">
                   {reenrollCmd(rotated)}
                 </pre>
