@@ -14,6 +14,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Api, type NodeInfo, ApiError } from "@/lib/api";
 
 function fmtBytes(n: number): string {
@@ -313,9 +314,11 @@ export default function NodesPage() {
             <div className="space-y-4">
               <div>
                 <Label className="text-sm uppercase text-muted-foreground">一键安装命令</Label>
-                <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-md border bg-muted p-3 text-xs">
-                  {installCmd(created)}
-                </pre>
+                <ScrollArea className="mt-1 max-h-64 rounded-md border bg-muted">
+                  <pre className="whitespace-pre-wrap break-all p-3 text-xs">
+                    {installCmd(created)}
+                  </pre>
+                </ScrollArea>
                 <Button variant="outline" size="sm" className="mt-2" onClick={copyCmd}>
                   {cmdCopied ? (
                     <Check className="mr-2 h-4 w-4" />

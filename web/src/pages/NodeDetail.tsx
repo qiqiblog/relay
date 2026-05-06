@@ -795,9 +795,11 @@ export default function NodeDetail() {
           {rotated && (
             <div>
               <Label className="text-sm uppercase text-muted-foreground">安装命令</Label>
-              <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-md border bg-muted p-3 text-xs">
-{reenrollCmd(rotated)}
-              </pre>
+              <ScrollArea className="mt-1 max-h-64 rounded-md border bg-muted">
+                <pre className="whitespace-pre-wrap break-all p-3 text-xs">
+                  {reenrollCmd(rotated)}
+                </pre>
+              </ScrollArea>
               <Button variant="outline" size="sm" className="mt-2" onClick={copyReenrollCmd}>
                 {cmdCopied ? <Check className="mr-2 h-4 w-4" /> : <Copy className="mr-2 h-4 w-4" />}
                 {cmdCopied ? "已复制" : "复制命令"}
