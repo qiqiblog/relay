@@ -13,7 +13,7 @@ use tokio::sync::Mutex;
 
 const CACHE_TTL: Duration = Duration::from_secs(300);
 const HTTP_TIMEOUT: Duration = Duration::from_secs(10);
-pub const DEFAULT_REPO: &str = "unix-relay/relay";
+pub const DEFAULT_REPO: &str = "0xUnixIO/relay";
 
 /// Validate a release tag against the project convention `vMAJOR.MINOR.PATCH`
 /// optionally followed by `-rc.<alphanumeric.dotted>`. Examples:

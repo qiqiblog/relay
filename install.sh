@@ -3,14 +3,14 @@
 #
 # Quick start (interactive, no sudo on the command line — script will
 # self-elevate via sudo):
-#   bash <(curl -fsSL https://raw.githubusercontent.com/unix-relay/relay/main/install.sh)
+#   bash <(curl -fsSL https://raw.githubusercontent.com/0xUnixIO/relay/main/install.sh)
 #
 # Pin a version:
 #   bash <(curl -fsSL .../install.sh) --version v0.1.2
 #
 # Flags:
 #   --version <tag>     pin a specific release tag (default: latest)
-#   --repo <owner/name> override the GitHub repo (default: unix-relay/relay)
+#   --repo <owner/name> override the GitHub repo (default: 0xUnixIO/relay)
 #   --no-start          install but don't enable/start the service
 #   --uninstall         stop service, remove binary + unit. Then asks
 #                       interactively whether to also wipe env / PKI /
@@ -28,7 +28,7 @@
 
 set -euo pipefail
 
-REPO="unix-relay/relay"
+REPO="0xUnixIO/relay"
 VERSION="latest"
 INCLUDE_PRERELEASE=0
 START=1

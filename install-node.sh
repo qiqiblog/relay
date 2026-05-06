@@ -7,7 +7,7 @@
 #
 # Manual usage (if you know what you are doing — script self-elevates,
 # no sudo needed):
-#   bash <(curl -fsSL https://raw.githubusercontent.com/unix-relay/relay/main/install-node.sh) \
+#   bash <(curl -fsSL https://raw.githubusercontent.com/0xUnixIO/relay/main/install-node.sh) \
 #     --master https://master.example.com:7443 \
 #     --node-id node-01 \
 #     --token <ENROLLMENT_TOKEN> \
@@ -20,7 +20,7 @@
 #   --ca-cert <b64>        base64 of the master CA cert PEM (required first install)
 #   --enroll <url>         master Enroll TLS endpoint (default: master host with :7444)
 #   --version <tag>        pin a specific release tag (default: latest)
-#   --repo <owner/name>    override the GitHub repo (default: unix-relay/relay)
+#   --repo <owner/name>    override the GitHub repo (default: 0xUnixIO/relay)
 #   --update               upgrade-only: keep existing env / pki, no enrollment args needed
 #   --non-interactive      never prompt (for automated callers like the updater)
 #   --no-start             install but don't enable/start the service
@@ -30,7 +30,7 @@
 
 set -euo pipefail
 
-REPO="unix-relay/relay"
+REPO="0xUnixIO/relay"
 VERSION="latest"
 INCLUDE_PRERELEASE=0
 MASTER=""

@@ -2,11 +2,11 @@
 # Add a GitHub Actions self-hosted runner to this machine.
 #
 # Usage (interactive):
-#   bash <(curl -fsSL https://raw.githubusercontent.com/unix-relay/relay/main/install-runner.sh)
+#   bash <(curl -fsSL https://raw.githubusercontent.com/0xUnixIO/relay/main/install-runner.sh)
 #
 # Usage (non-interactive, all flags):
 #   bash <(curl -fsSL …/install-runner.sh) \
-#     --repo   unix-relay/relay  \
+#     --repo   0xUnixIO/relay  \
 #     --token  <REGISTRATION_TOKEN> \
 #     --name   my-runner           \
 #     --labels self-hosted,linux   \
