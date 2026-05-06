@@ -354,8 +354,6 @@ export const Api = {
     }),
   rotateNodeToken: (id: string) =>
     api<RotateTokenResp>(`/api/v1/nodes/${id}/rotate-token`, { method: "POST" }),
-  revokeNodeCert: (id: string) =>
-    api(`/api/v1/nodes/${id}/revoke-cert`, { method: "POST" }),
   serverInfo: () => api<ServerInfo>("/api/v1/server-info"),
   probeNodePort: (
     nodeId: string,

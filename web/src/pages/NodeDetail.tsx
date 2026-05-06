@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import useSWR from "swr";
 import { timeAgo, cn } from "@/lib/utils";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { ArrowLeft, RefreshCw, Copy, Check, Save, Plus, X, ArrowUp, ArrowDown, ArrowUpCircle, ShieldOff, Trash2, MoreHorizontal } from "lucide-react";
+import { ArrowLeft, RefreshCw, Copy, Check, Save, Plus, X, ArrowUp, ArrowDown, ArrowUpCircle, Trash2, MoreHorizontal } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
@@ -14,7 +14,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -90,7 +89,6 @@ export default function NodeDetail() {
 
   const forwards = allForwards.filter((f) => f.ports.some((p) => p.node_id === id));
   const [rotated, setRotated] = useState<RotateTokenResp | null>(null);
-  const [confirmRevoke, setConfirmRevoke] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const navigate = useNavigate();
   const [upgradeOpen, setUpgradeOpen] = useState(false);
@@ -255,16 +253,7 @@ export default function NodeDetail() {
     }
   };
 
-  const revokeCert = async () => {
-    setConfirmRevoke(false);
-    try {
-      await Api.revokeNodeCert(id!);
-      toast.success("证书已吊销，节点已断开");
-      mutateNode();
-    } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : String(e));
-    }
-  };
+
 
   const deleteNode = async () => {
     setConfirmDelete(false);
@@ -408,10 +397,6 @@ export default function NodeDetail() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => setConfirmRevoke(true)} className="text-amber-600">
-                <ShieldOff className="mr-2 h-4 w-4" /> 吊销证书
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => setConfirmDelete(true)} className="text-destructive">
                 <Trash2 className="mr-2 h-4 w-4" /> 删除节点
               </DropdownMenuItem>
@@ -753,21 +738,6 @@ export default function NodeDetail() {
       })()}
 
 
-      <Dialog open={confirmRevoke} onOpenChange={setConfirmRevoke}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>确认吊销证书</DialogTitle>
-            <DialogDescription>
-              节点将立即断开连接，证书失效。如需恢复，需重新运行安装命令。
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmRevoke(false)}>取消</Button>
-            <Button variant="destructive" onClick={revokeCert}>确认吊销</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <DialogContent>
           <DialogHeader>
@@ -827,6 +797,9 @@ export default function NodeDetail() {
               </Button>
             </div>
           )}
+          <DialogFooter>
+            <Button onClick={() => setRotated(null)}>完成</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

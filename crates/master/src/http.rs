@@ -50,7 +50,6 @@ pub async fn serve(addr: SocketAddr, state: AppState) -> anyhow::Result<()> {
         )
         .route("/api/v1/nodes/:id/series", get(get_node_series))
         .route("/api/v1/nodes/:id/rotate-token", post(rotate_node_token))
-        .route("/api/v1/nodes/:id/revoke-cert", post(revoke_node_cert))
         .route("/api/v1/nodes/:id/probe-port", post(probe_node_port))
         .route("/api/v1/tunnels", post(create_tunnel))
         .route(
@@ -1056,28 +1055,6 @@ async fn rotate_node_token(
     }))
 }
 
-async fn revoke_node_cert(
-    State(s): State<AppState>,
-    Path(id): Path<String>,
-) -> ApiResult<StatusCode> {
-    let res = sqlx::query(
-        "UPDATE nodes
-            SET cert_fingerprint = NULL,
-                cert_serial      = NULL,
-                cert_not_after   = NULL,
-                updated_at       = now()
-          WHERE id = $1",
-    )
-    .bind(&id)
-    .execute(&s.db)
-    .await?;
-    if res.rows_affected() == 0 {
-        return Err(ApiError::new(StatusCode::NOT_FOUND, "资源不存在"));
-    }
-    s.registry.force_kick(&id).await;
-    Ok(StatusCode::NO_CONTENT)
-}
-
 #[derive(Serialize)]
 pub struct ServerInfo {
     pub public_host: String,
@@ -1288,9 +1265,17 @@ async fn list_tunnels(
             .fetch_all(&s.db)
             .await?
     } else {
-        sqlx::query_as("SELECT * FROM tunnels WHERE enabled = true ORDER BY name")
-            .fetch_all(&s.db)
-            .await?
+        // 非管理员只能看到自己套餐内已分配且 enabled 的隧道
+        let user_id = caller_id(&claims)?;
+        sqlx::query_as(
+            "SELECT t.* FROM tunnels t
+               JOIN user_tunnels ut ON ut.tunnel_id = t.id
+              WHERE ut.user_id = $1 AND ut.enabled = true
+              ORDER BY t.name",
+        )
+        .bind(user_id)
+        .fetch_all(&s.db)
+        .await?
     };
     let mut out = Vec::with_capacity(tunnels.len());
     for t in tunnels {
@@ -2687,6 +2672,21 @@ async fn create_forward(
         tunnel_row.ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "隧道不存在"))?;
 
     let user_id = caller_id(&claims)?;
+
+    // 非管理员必须持有 enabled 的 user_tunnel 才能使用该隧道
+    if claims.role != "admin" {
+        let allowed: Option<(i64,)> = sqlx::query_as(
+            "SELECT id FROM user_tunnels
+              WHERE user_id = $1 AND tunnel_id = $2 AND enabled = true",
+        )
+        .bind(user_id)
+        .bind(req.tunnel_id)
+        .fetch_optional(&s.db)
+        .await?;
+        if allowed.is_none() {
+            return Err(ApiError::new(StatusCode::FORBIDDEN, "无权使用此隧道"));
+        }
+    }
 
     // 检查转发数量是否已达上限
     let limit_row: Option<(i32,)> = sqlx::query_as(
