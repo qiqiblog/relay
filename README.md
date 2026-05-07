@@ -61,7 +61,9 @@
 bash <(curl -fsSL https://raw.githubusercontent.com/0xUnixIO/relay/main/install.sh)
 ```
 
-交互向导会引导完成：公网地址确认 → PostgreSQL（Docker Compose）→ Redis（可选）→ Web 域名 + HTTPS（可选）。全程约 2 分钟。
+交互向导会引导完成：PostgreSQL → Redis（可选）→ 公网地址确认 → Web 域名 + HTTPS（可选）。全程约 2 分钟。
+
+> PostgreSQL / Redis 支持三种方式：**Docker**（推荐，所有发行版）、**apt 原生安装**（仅 Debian/Ubuntu）、或填入已有实例的连接串。非 apt 发行版请提前自行安装数据库，或选择 Docker 方式。
 
 安装完成后：
 - Web 控制台：`http://<your-ip>:7080`（或 HTTPS 域名）
@@ -85,7 +87,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/0xUnixIO/relay/main/install.
 **master 主机**
 - Linux x86_64 或 aarch64
 - systemd
-- Docker + docker compose v2（仅用于启动内置 PostgreSQL / Redis；使用外部数据库时不需要）
+- Docker + docker compose v2（推荐）或自有 PostgreSQL / Redis 实例；原生 apt 安装仅支持 Debian/Ubuntu
 - 开放端口：`7080`（HTTP）、`7443`（gRPC）、`7444`（节点注册）
 
 > relay master 本身是原生 Rust 二进制，以 systemd 服务运行在宿主机上，不跑在容器里。

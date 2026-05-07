@@ -369,133 +369,174 @@ else
   command -v openssl >/dev/null || die "openssl is required for interactive setup"
 
   log "交互式安装 — 请回答几个问题"
-  echo
 
-  # 第一步：数据库 — 最重、最易出错，优先搞定
-  USE_DOCKER=0
-  ADMIN_URL=""
+  RELAY_PW="$(openssl rand -hex 16)"
+  JWT_SECRET="$(openssl rand -hex 32)"
+  USE_SOCKET_INIT=0
+
   has_docker_compose() {
     command -v docker >/dev/null && docker compose version >/dev/null 2>&1
   }
 
-  if ! has_docker_compose; then
-    warn "未检测到 docker（含 'docker compose' v2）"
-    read -r -p "通过 https://get.docker.com 安装 Docker 并使用内置 Postgres？[Y/n] " ans
-    case "${ans:-Y}" in
-      [Nn]*) : ;;
-      *)
-        log "正在通过 get.docker.com 安装 Docker（可能需要一分钟）"
-        curl -fsSL https://get.docker.com | sh
-        systemctl enable --now docker || true
-        if ! has_docker_compose; then
-          die "docker compose still not available after install — please check the Docker install logs"
-        fi
-        ;;
-    esac
-  fi
+  ensure_docker() {
+    if ! has_docker_compose; then
+      read -r -p "未检测到 docker，通过 https://get.docker.com 安装？[Y/n] " ans
+      case "${ans:-Y}" in
+        [Nn]*) die "请先安装 Docker 或选择原生安装" ;;
+        *)
+          log "正在安装 Docker（可能需要一分钟）"
+          curl -fsSL https://get.docker.com | sh
+          systemctl enable --now docker || true
+          has_docker_compose || die "docker compose 仍不可用，请检查 Docker 安装日志"
+          ;;
+      esac
+    fi
+  }
 
-  if has_docker_compose; then
-    read -r -p "通过内置的 docker compose 文件启动 Postgres？[Y/n] " ans
-    case "${ans:-Y}" in
-      [Nn]*) : ;;
-      *) USE_DOCKER=1 ;;
-    esac
-  fi
-
-  if [[ "$USE_DOCKER" -eq 1 ]]; then
+  start_postgres_docker() {
+    ensure_docker
     log "fetching docker compose file → $COMPOSE_FILE"
     curl -fsSL "https://raw.githubusercontent.com/$REPO/main/deploy/docker-compose.postgres.yml" \
          -o "$COMPOSE_FILE"
-
+    local SUPER_PW
     if [[ ! -f "$COMPOSE_ENV_FILE" ]]; then
       SUPER_PW="$(openssl rand -hex 16)"
-      cat >"$COMPOSE_ENV_FILE" <<EOF
-POSTGRES_PASSWORD=$SUPER_PW
-EOF
+      printf 'POSTGRES_PASSWORD=%s\n' "$SUPER_PW" >"$COMPOSE_ENV_FILE"
       chmod 0600 "$COMPOSE_ENV_FILE"
-      log "generated Postgres superuser password ($COMPOSE_ENV_FILE)"
+      log "已生成 Postgres 超级用户密码"
     else
-      log "$COMPOSE_ENV_FILE already exists — reusing"
+      log "$COMPOSE_ENV_FILE 已存在，复用"
       # shellcheck disable=SC1090
       source "$COMPOSE_ENV_FILE"
       SUPER_PW="$POSTGRES_PASSWORD"
     fi
-
-    log "starting Postgres container"
-    ( cd "$ETC_DIR" && docker compose --env-file "$COMPOSE_ENV_FILE" \
-        -f "$COMPOSE_FILE" up -d ) >/dev/null
-
-    log "waiting for Postgres to become healthy"
+    log "启动 Postgres 容器"
+    ( cd "$ETC_DIR" && docker compose --env-file "$COMPOSE_ENV_FILE" -f "$COMPOSE_FILE" up -d ) >/dev/null
+    log "等待 Postgres 就绪"
     for i in $(seq 1 30); do
-      if docker exec relay-postgres pg_isready -U postgres >/dev/null 2>&1; then
-        break
-      fi
+      docker exec relay-postgres pg_isready -U postgres >/dev/null 2>&1 && break
       sleep 1
-      [[ "$i" -eq 30 ]] && die "Postgres did not become healthy within 30s"
+      [[ "$i" -eq 30 ]] && die "Postgres 未在 30s 内就绪"
     done
-
     ADMIN_URL="postgres://postgres:${SUPER_PW}@127.0.0.1:5432/postgres"
-  else
-    while [[ -z "$ADMIN_URL" ]]; do
-      read -r -p "Postgres 超级用户 DSN（postgres://USER:PW@HOST/DB）: " ADMIN_URL
-      [[ -z "$ADMIN_URL" ]] && warn "value is required"
+  }
+
+  start_postgres_native() {
+    log "通过 apt 安装 PostgreSQL"
+    apt-get update -qq
+    DEBIAN_FRONTEND=noninteractive apt-get install -y postgresql >/dev/null
+    systemctl enable --now postgresql
+    log "等待 PostgreSQL 就绪"
+    for i in $(seq 1 15); do
+      pg_isready -U postgres >/dev/null 2>&1 && break
+      sleep 1
+      [[ "$i" -eq 15 ]] && die "PostgreSQL 未就绪"
     done
-  fi
+    ADMIN_URL="postgres:///postgres?host=/var/run/postgresql"
+    USE_SOCKET_INIT=1
+  }
 
-  RELAY_PW="$(openssl rand -hex 16)"
-  JWT_SECRET="$(openssl rand -hex 32)"
+  start_redis_docker() {
+    ensure_docker
+    log "fetching docker compose file → $REDIS_COMPOSE_FILE"
+    curl -fsSL "https://raw.githubusercontent.com/$REPO/main/deploy/docker-compose.redis.yml" \
+         -o "$REDIS_COMPOSE_FILE"
+    local REDIS_PW
+    if [[ ! -f "$REDIS_ENV_FILE" ]]; then
+      REDIS_PW="$(openssl rand -hex 16)"
+      printf 'REDIS_PASSWORD=%s\n' "$REDIS_PW" >"$REDIS_ENV_FILE"
+      chmod 0600 "$REDIS_ENV_FILE"
+      log "已生成 Redis 密码"
+    else
+      log "$REDIS_ENV_FILE 已存在，复用"
+      # shellcheck disable=SC1090
+      source "$REDIS_ENV_FILE"
+      REDIS_PW="$REDIS_PASSWORD"
+    fi
+    log "启动 Redis 容器"
+    ( cd "$ETC_DIR" && docker compose --env-file "$REDIS_ENV_FILE" -f "$REDIS_COMPOSE_FILE" up -d ) >/dev/null
+    log "等待 Redis 就绪"
+    for i in $(seq 1 20); do
+      docker exec relay-redis redis-cli -a "$REDIS_PW" --no-auth-warning ping 2>/dev/null \
+        | grep -q PONG && break
+      sleep 1
+      [[ "$i" -eq 20 ]] && die "Redis 未在 20s 内就绪"
+    done
+    REDIS_URL="redis://:${REDIS_PW}@127.0.0.1:6379/0"
+  }
 
-  log "running 'relay-master db init'"
-  /usr/local/bin/relay-master db init \
-    --admin-url "$ADMIN_URL" \
-    --password  "$RELAY_PW"
+  start_redis_native() {
+    log "通过 apt 安装 Redis"
+    apt-get update -qq
+    DEBIAN_FRONTEND=noninteractive apt-get install -y redis-server >/dev/null
+    local redis_conf="/etc/redis/redis.conf"
+    [[ -f "$redis_conf" ]] || redis_conf="$(find /etc/redis -name '*.conf' 2>/dev/null | head -1)"
+    [[ -z "$redis_conf" ]] && die "找不到 Redis 配置文件"
+    local REDIS_PW
+    REDIS_PW="$(openssl rand -hex 16)"
+    sed -i '/^requirepass /d' "$redis_conf"
+    echo "requirepass $REDIS_PW" >> "$redis_conf"
+    local redis_svc="redis-server"
+    systemctl list-unit-files redis.service >/dev/null 2>&1 && redis_svc="redis"
+    systemctl enable "$redis_svc" >/dev/null 2>&1 || true
+    systemctl restart "$redis_svc"
+    log "等待 Redis 就绪"
+    for i in $(seq 1 15); do
+      redis-cli -a "$REDIS_PW" --no-auth-warning ping 2>/dev/null | grep -q PONG && break
+      sleep 1
+      [[ "$i" -eq 15 ]] && die "Redis 未就绪"
+    done
+    REDIS_URL="redis://:${REDIS_PW}@127.0.0.1:6379/0"
+  }
 
-  # 第二步：可选 Redis（探测结果防抖缓存等轻量用途）
-  REDIS_URL=""
-  if has_docker_compose; then
+  # ── Postgres ──────────────────────────────────────────────
+  echo
+  ADMIN_URL=""
+  read -r -p "已有 Postgres？填入 DSN（postgres://USER:PW@HOST/DB），没有直接回车: " ADMIN_URL
+  if [[ -z "$ADMIN_URL" ]]; then
     echo
-    read -r -p "通过内置的 docker compose 文件启动 Redis（用于 probe 防抖缓存）？[Y/n] " ans
-    case "${ans:-Y}" in
-      [Nn]*) : ;;
-      *)
-        log "fetching docker compose file → $REDIS_COMPOSE_FILE"
-        curl -fsSL "https://raw.githubusercontent.com/$REPO/main/deploy/docker-compose.redis.yml" \
-             -o "$REDIS_COMPOSE_FILE"
-
-        if [[ ! -f "$REDIS_ENV_FILE" ]]; then
-          REDIS_PW="$(openssl rand -hex 16)"
-          cat >"$REDIS_ENV_FILE" <<EOF
-REDIS_PASSWORD=$REDIS_PW
-EOF
-          chmod 0600 "$REDIS_ENV_FILE"
-          log "generated Redis password ($REDIS_ENV_FILE)"
-        else
-          log "$REDIS_ENV_FILE already exists — reusing"
-          # shellcheck disable=SC1090
-          source "$REDIS_ENV_FILE"
-          REDIS_PW="$REDIS_PASSWORD"
-        fi
-
-        log "starting Redis container"
-        ( cd "$ETC_DIR" && docker compose --env-file "$REDIS_ENV_FILE" \
-            -f "$REDIS_COMPOSE_FILE" up -d ) >/dev/null
-
-        log "waiting for Redis to become healthy"
-        for i in $(seq 1 20); do
-          if docker exec relay-redis redis-cli -a "$REDIS_PW" --no-auth-warning ping 2>/dev/null \
-               | grep -q PONG; then
-            break
-          fi
-          sleep 1
-          [[ "$i" -eq 20 ]] && die "Redis did not become healthy within 20s"
-        done
-
-        REDIS_URL="redis://:${REDIS_PW}@127.0.0.1:6379/0"
-        ;;
+    echo "  选择 PostgreSQL 安装方式："
+    echo "    1. Docker（推荐，所有发行版）"
+    echo "    2. 原生安装（apt install postgresql，仅 Debian/Ubuntu）"
+    echo
+    read -r -p "  请选择 [1/2，默认 1]: " pg_choice
+    case "${pg_choice:-1}" in
+      2) start_postgres_native ;;
+      *) start_postgres_docker ;;
     esac
   fi
 
-  # 第三步：公网地址
+  log "初始化数据库（relay-master db init）"
+  if [[ "$USE_SOCKET_INIT" -eq 1 ]]; then
+    sudo -u postgres /usr/local/bin/relay-master db init \
+      --admin-url "$ADMIN_URL" \
+      --password  "$RELAY_PW"
+  else
+    /usr/local/bin/relay-master db init \
+      --admin-url "$ADMIN_URL" \
+      --password  "$RELAY_PW"
+  fi
+
+  # ── Redis ──────────────────────────────────────────────────
+  echo
+  REDIS_URL=""
+  read -r -p "已有 Redis？填入 URL（redis://:PW@HOST:PORT/0），跳过直接回车: " REDIS_URL
+  if [[ -z "$REDIS_URL" ]]; then
+    echo
+    echo "  选择 Redis 安装方式："
+    echo "    1. Docker（推荐，所有发行版）"
+    echo "    2. 原生安装（apt install redis-server，仅 Debian/Ubuntu）"
+    echo "    3. 跳过（不使用 Redis，probe 防抖功能退化）"
+    echo
+    read -r -p "  请选择 [1/2/3，默认 3]: " redis_choice
+    case "${redis_choice:-3}" in
+      1) start_redis_docker ;;
+      2) start_redis_native ;;
+      *) log "跳过 Redis" ;;
+    esac
+  fi
+
+  # ── 公网地址 ────────────────────────────────────────────
   echo
   PUBLIC_ADDR=""
   detected_lan="$(hostname -I 2>/dev/null | awk '{print $1}')"
@@ -522,7 +563,7 @@ EOF
     [[ -z "$PUBLIC_ADDR" ]] && warn "value is required"
   done
 
-  # 第三步：Web 域名（涉及端口冲突检查，放最后）
+  # ── Web 域名（Caddy） ────────────────────────────────────
   echo
   log "可选：通过 Caddy + Let's Encrypt 用 HTTPS 提供 Web 控制台"
   log "  （需要公网 DNS 指向本机 + 80/443 端口未被占用）"
