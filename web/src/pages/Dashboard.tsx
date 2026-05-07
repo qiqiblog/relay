@@ -95,7 +95,7 @@ export default function Dashboard() {
   const online = nodes.filter(isOnline);
   const offline = nodes.filter((n) => !isOnline(n));
   const enabled = forwards.filter((f) => f.effective_enabled);
-  const totalConns = nodes.reduce((s, n) => s + (n.last_heartbeat?.active_connections ?? 0), 0);
+  const totalConns = forwards.reduce((s, f) => s + (f.active_connections ?? 0), 0);
 
   // "active" = effective_enabled and entry node online.
   const active = enabled.filter((f) => {
