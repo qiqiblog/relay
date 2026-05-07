@@ -17,6 +17,13 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Api, type NodeInfo, ApiError } from "@/lib/api";
 
+const MIRROR_PRESETS = [
+  { label: "ghproxy.com", url: "https://ghproxy.com/" },
+  { label: "mirror.ghproxy.com", url: "https://mirror.ghproxy.com/" },
+  { label: "ghfast.top", url: "https://ghfast.top/" },
+  { label: "moeyy.xyz", url: "https://github.moeyy.xyz/" },
+];
+
 function fmtBytes(n: number): string {
   const u = ["B", "KB", "MB", "GB", "TB"];
   let v = n, i = 0;
@@ -151,11 +158,10 @@ function NodeCard({
 
 export default function NodesPage() {
   const { data: nodes = [], mutate: refreshNodes } = useSWR("nodes", Api.listNodes, {
-    refreshInterval: 5000,
     onError: (e) => toast.error(e instanceof ApiError ? e.message : String(e)),
   });
   const { data: serverInfo } = useSWR("server-info", Api.serverInfo);
-  const { data: allForwards = [] } = useSWR("forwards", Api.listForwards, { refreshInterval: 5000 });
+  const { data: allForwards = [] } = useSWR("forwards", Api.listForwards);
 
   const nodeStats = useMemo<Record<string, NodeStats>>(() => {
     const map: Record<string, NodeStats> = {};
@@ -320,13 +326,29 @@ export default function NodesPage() {
             <div className="space-y-4">
               <div>
                 <Label className="text-sm uppercase text-muted-foreground">一键安装命令</Label>
-                <div className="mt-2 mb-2">
+                <div className="mt-2 mb-2 space-y-1">
                   <Input
                     placeholder="GitHub 镜像前缀（可选，如 https://ghproxy.com/）"
                     value={mirrorUrl}
                     onChange={(e) => setMirrorUrl(e.target.value)}
                     className="h-8 text-xs"
                   />
+                  <div className="flex flex-wrap gap-1">
+                    {MIRROR_PRESETS.map((preset) => (
+                      <button
+                        key={preset.url}
+                        type="button"
+                        onClick={() => setMirrorUrl(mirrorUrl === preset.url ? "" : preset.url)}
+                        className={`px-2 py-0.5 rounded text-xs border transition-colors ${
+                          mirrorUrl === preset.url
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "bg-muted text-muted-foreground border-border hover:bg-accent hover:text-accent-foreground"
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <ScrollArea className="h-64 rounded-md border bg-muted">
                   <pre className="whitespace-pre-wrap break-all p-3 text-xs">

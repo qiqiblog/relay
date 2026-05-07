@@ -4,7 +4,6 @@ import { toast } from "sonner";
 import { Copy, Check, Eye, EyeOff, Play, RefreshCw } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { Api, ApiError, type BackupJob } from "@/lib/api";
-import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -35,7 +34,7 @@ export default function ConfigPage() {
   const [saving, setSaving] = useState(false);
   const [channelSaving, setChannelSaving] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [upgradeRegion, setUpgradeRegion] = useState<"global" | "cn">("global");
+  const [masterMirrorUrl, setMasterMirrorUrl] = useState("");
   const [brandDraft, setBrandDraft] = useState<string | undefined>(undefined);
   const [brandSaving, setBrandSaving] = useState(false);
 
@@ -92,15 +91,13 @@ export default function ConfigPage() {
   const masterVersion = sysVersion?.master_version ?? "—";
   const masterTagged = masterVersion.startsWith("v") ? masterVersion : `v${masterVersion}`;
   const upgradeTarget = sysVersion?.latest_stable?.tag ?? masterTagged;
-  const masterUpgradeCmd = (region: "global" | "cn" = upgradeRegion) => {
-    const scriptUrl = region === "cn"
-      ? `${window.location.origin}/scripts/install.sh`
-      : "https://raw.githubusercontent.com/0xUnixIO/relay/main/install.sh";
+  const masterUpgradeCmd = () => {
+    const scriptUrl = `${masterMirrorUrl}https://raw.githubusercontent.com/0xUnixIO/relay/main/install.sh`;
     return `curl -fsSL ${scriptUrl} | sudo bash -s -- --update --version ${upgradeTarget}`;
   };
   const copyCmd = async () => {
     try {
-      await navigator.clipboard.writeText(masterUpgradeCmd(upgradeRegion));
+      await navigator.clipboard.writeText(masterUpgradeCmd());
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
@@ -327,27 +324,38 @@ export default function ConfigPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex gap-0.5 rounded-lg bg-muted p-0.5 text-xs">
-              {(["global", "cn"] as const).map((r) => (
+          <div className="space-y-1">
+            <Input
+              placeholder="GitHub 镜像前缀（可选，如 https://ghproxy.com/）"
+              value={masterMirrorUrl}
+              onChange={(e) => setMasterMirrorUrl(e.target.value)}
+              className="h-8 text-xs"
+            />
+            <div className="flex flex-wrap gap-1">
+              {([
+                { label: "ghproxy.com", url: "https://ghproxy.com/" },
+                { label: "mirror.ghproxy.com", url: "https://mirror.ghproxy.com/" },
+                { label: "ghfast.top", url: "https://ghfast.top/" },
+                { label: "moeyy.xyz", url: "https://github.moeyy.xyz/" },
+              ]).map((preset) => (
                 <button
-                  key={r}
-                  onClick={() => setUpgradeRegion(r)}
-                  className={cn(
-                    "rounded-md px-2.5 py-1 font-medium transition-colors",
-                    upgradeRegion === r
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
+                  key={preset.url}
+                  type="button"
+                  onClick={() => setMasterMirrorUrl(masterMirrorUrl === preset.url ? "" : preset.url)}
+                  className={`px-2 py-0.5 rounded text-xs border transition-colors ${
+                    masterMirrorUrl === preset.url
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-muted text-muted-foreground border-border hover:bg-accent hover:text-accent-foreground"
+                  }`}
                 >
-                  {r === "global" ? "国际线路" : "国内线路"}
+                  {preset.label}
                 </button>
               ))}
             </div>
           </div>
           <div className="flex gap-2 items-stretch">
             <code className="flex-1 rounded-md border bg-muted/30 px-3 py-2 text-xs font-mono break-all">
-              {masterUpgradeCmd(upgradeRegion)}
+              {masterUpgradeCmd()}
             </code>
             <Button variant="outline" size="sm" onClick={copyCmd} className="flex-shrink-0">
               {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
