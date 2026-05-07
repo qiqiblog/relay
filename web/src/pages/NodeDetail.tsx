@@ -77,14 +77,12 @@ export default function NodeDetail() {
   const { data: node, mutate: mutateNode } = useSWR(
     ["node", id],
     () => Api.getNode(id),
-    { refreshInterval: 5000 },
   );
   const { data: series } = useSWR(
     ["node-series", id],
     () => Api.getNodeSeries(id),
-    { refreshInterval: 5000 },
   );
-  const { data: allForwards = [] } = useSWR("forwards", Api.listForwards, { refreshInterval: 5000 });
+  const { data: allForwards = [] } = useSWR("forwards", Api.listForwards);
   const { data: serverInfo } = useSWR("server-info", Api.serverInfo);
 
   const forwards = allForwards.filter((f) => f.ports.some((p) => p.node_id === id));
@@ -95,7 +93,6 @@ export default function NodeDetail() {
   const { data: upgradeJobs = [] } = useSWR(
     id ? ["node-upgrade-jobs", id] : null,
     () => Api.listNodeUpgradeJobs(id!, 5),
-    { refreshInterval: 5000 },
   );
   const [cmdCopied, setCmdCopied] = useState(false);
   const [mirrorUrl, setMirrorUrl] = useState("");

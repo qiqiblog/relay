@@ -51,12 +51,8 @@ const isOnline = (n: NodeInfo) =>
 
 export default function TunnelsPage() {
   const confirm = useConfirm();
-  const { data: tunnels = [], mutate } = useSWR("tunnels", Api.listTunnels, {
-    refreshInterval: 5000,
-  });
-  const { data: nodes = [] } = useSWR("nodes", Api.listNodes, {
-    refreshInterval: 10000,
-  });
+  const { data: tunnels = [], mutate } = useSWR("tunnels", Api.listTunnels);
+  const { data: nodes = [] } = useSWR("nodes", Api.listNodes);
 
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Tunnel | null>(null);

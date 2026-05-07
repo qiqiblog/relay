@@ -60,8 +60,8 @@ function FlowTooltip({ active, payload }: { active?: boolean; payload?: Array<{ 
 }
 
 export default function Dashboard() {
-  const { data: nodes = [] } = useSWR("nodes", Api.listNodes, { refreshInterval: 5000 });
-  const { data: forwards = [] } = useSWR("forwards", Api.listForwards, { refreshInterval: 5000 });
+  const { data: nodes = [] } = useSWR("nodes", Api.listNodes);
+  const { data: forwards = [] } = useSWR("forwards", Api.listForwards);
 
   // ---------- 流量趋势：环形缓冲区 ----------
   const bufRef = useRef<FlowSample[]>([]);

@@ -23,9 +23,7 @@ import { toast } from "sonner";
 
 export default function UserGroupsPage() {
   const confirm = useConfirm();
-  const { data: groups = [], mutate } = useSWR("user-groups", Api.listUserGroups, {
-    refreshInterval: 15000,
-  });
+  const { data: groups = [], mutate } = useSWR("user-groups", Api.listUserGroups);
 
   const [newName, setNewName] = useState("");
   const [newOpen, setNewOpen] = useState(false);

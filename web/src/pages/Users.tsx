@@ -46,10 +46,8 @@ const emptyUserForm = (): UserForm => ({
 
 export default function UsersPage() {
   const confirm = useConfirm();
-  const { data: users = [], mutate } = useSWR("users", Api.listUsers, {
-    refreshInterval: 10000,
-  });
-  const { data: forwards = [] } = useSWR("forwards", Api.listForwards, { refreshInterval: 10000 });
+  const { data: users = [], mutate } = useSWR("users", Api.listUsers);
+  const { data: forwards = [] } = useSWR("forwards", Api.listForwards);
   // @ts-ignore – reserved for future active-connection column
   const connsByUser = useMemo(() => {
     const m = new Map<string, number>();

@@ -14,7 +14,7 @@ function fmtBytes(n: number): string {
 }
 
 export default function UserDashboard() {
-  const { data: forwards = [] } = useSWR("forwards", Api.listForwards, { refreshInterval: 5000 });
+  const { data: forwards = [] } = useSWR("forwards", Api.listForwards);
   const { data: cfg } = useSWR("system-config", Api.getConfig, { revalidateOnFocus: false });
   const { data: me } = useSWR("me", Api.getMe);
 

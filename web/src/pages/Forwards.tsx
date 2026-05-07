@@ -73,17 +73,12 @@ type ProbeState =
 export default function ForwardsPage() {
   const confirm = useConfirm();
   const isAdmin = getRole() === "admin";
-  const { data: forwards = [], mutate } = useSWR("forwards", Api.listForwards, {
-    refreshInterval: 5000,
-  });
+  const { data: forwards = [], mutate } = useSWR("forwards", Api.listForwards);
   // 所有用户都能获取隧道列表（非 admin 只返回 enabled 的）
-  const { data: tunnels = [] } = useSWR<Tunnel[]>("tunnels", Api.listTunnels, {
-    refreshInterval: 30000,
-  });
+  const { data: tunnels = [] } = useSWR<Tunnel[]>("tunnels", Api.listTunnels);
   const { data: nodes = [] } = useSWR<NodeInfo[]>(
     isAdmin ? "nodes" : null,
     isAdmin ? Api.listNodes : null,
-    { refreshInterval: 30000 },
   );
 
   const [open, setOpen] = useState(false);
