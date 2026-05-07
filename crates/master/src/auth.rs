@@ -34,7 +34,7 @@ pub fn issue_jwt(secret: &str, username: &str, role: &str) -> Result<String> {
     let claims = Claims {
         sub: username.to_string(),
         role: role.to_string(),
-        exp: (Utc::now() + Duration::hours(12)).timestamp(),
+        exp: (Utc::now() + Duration::days(7)).timestamp(),
     };
     Ok(encode(
         &Header::default(),
