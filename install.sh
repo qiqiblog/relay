@@ -494,13 +494,13 @@ else
   if [[ -z "$ADMIN_URL" ]]; then
     echo
     echo "  选择 PostgreSQL 安装方式："
-    echo "    1. Docker（推荐，所有发行版）"
-    echo "    2. 原生安装（apt install postgresql，仅 Debian/Ubuntu）"
+    echo "    1. 原生安装（推荐，apt install postgresql，仅 Debian/Ubuntu）"
+    echo "    2. Docker（所有发行版）"
     echo
     read -r -p "  请选择 [1/2，默认 1]: " pg_choice
     case "${pg_choice:-1}" in
-      2) start_postgres_native ;;
-      *) start_postgres_docker ;;
+      2) start_postgres_docker ;;
+      *) start_postgres_native ;;
     esac
   fi
 
