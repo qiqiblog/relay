@@ -531,15 +531,15 @@ else
   if [[ -z "$REDIS_URL" ]]; then
     echo
     echo "  选择 Redis 安装方式："
-    echo "    1. Docker（推荐，所有发行版）"
-    echo "    2. 原生安装（apt install redis-server，仅 Debian/Ubuntu）"
+    echo "    1. 原生安装（推荐，apt install redis-server，仅 Debian/Ubuntu）"
+    echo "    2. Docker（所有发行版）"
     echo "    3. 跳过（不使用 Redis，probe 防抖功能退化）"
     echo
-    read -r -p "  请选择 [1/2/3，默认 3]: " redis_choice
-    case "${redis_choice:-3}" in
-      1) start_redis_docker ;;
-      2) start_redis_native ;;
-      *) log "跳过 Redis" ;;
+    read -r -p "  请选择 [1/2/3，默认 1]: " redis_choice
+    case "${redis_choice:-1}" in
+      2) start_redis_docker ;;
+      3) log "跳过 Redis" ;;
+      *) start_redis_native ;;
     esac
   fi
 
