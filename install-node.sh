@@ -18,7 +18,8 @@
 #   --node-id <id>         node identifier as registered on the master (required)
 #   --token <token>        enrollment token shown in the master Web UI (required)
 #   --ca-cert <b64>        base64 of the master CA cert PEM (required first install)
-#   --enroll <url>         master Enroll TLS endpoint (default: master host with :7444)
+#   --enroll <url>         master enrollment endpoint (default: http://<master-host>:7080/api/v1/enroll)
+#                          alias: --master-enroll-endpoint
 #   --version <tag>        pin a specific release tag (default: latest)
 #   --repo <owner/name>    override the GitHub repo (default: 0xUnixIO/relay)
 #   --mirror <url>         GitHub 镜像前缀，用于国内加速（如 https://ghproxy.com/）
@@ -55,7 +56,8 @@ while [[ $# -gt 0 ]]; do
     --node-id)         NODE_ID="$2"; shift 2 ;;
     --token)           NODE_TOKEN="$2"; shift 2 ;;
     --ca-cert)         NODE_CA_CERT_B64="$2"; shift 2 ;;
-    --enroll)          ENROLL_ENDPOINT="$2"; shift 2 ;;
+    --enroll|--master-enroll-endpoint)
+                       ENROLL_ENDPOINT="$2"; shift 2 ;;
     --version)         VERSION="$2"; shift 2 ;;
     --prerelease)      INCLUDE_PRERELEASE=1; shift ;;
     --repo)            REPO="$2"; shift 2 ;;
@@ -217,8 +219,7 @@ if [[ -n "$NODE_TOKEN" ]]; then
   if [[ -z "$ENROLL_ENDPOINT" ]]; then
     HOST_PORT="${MASTER#http://}"; HOST_PORT="${HOST_PORT#https://}"
     HOST="${HOST_PORT%%/*}"; HOST="${HOST%%:*}"
-    SCHEME="https://"; [[ "$MASTER" == http://* ]] && SCHEME="http://"
-    ENROLL_ENDPOINT="${SCHEME}${HOST}:7444"
+    ENROLL_ENDPOINT="http://${HOST}:7080/api/v1/enroll"
   fi
   log "writing $ENV_FILE"
   cat >"$ENV_FILE" <<EOF
