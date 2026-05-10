@@ -1,36 +1,16 @@
-//! Node enrollment (M4.4).
-//!
-//! On cold start (no certs in `pki_dir`) we:
-//!   1. Generate a keypair locally.
-//!   2. Build a CSR.
-//!   3. Connect to the master's Enroll endpoint over TLS, pinning the CA
-//!      cert that was baked into the install command (`NODE_CA_CERT_B64`)
-//!      so we never have to TOFU-trust whatever the network hands back.
-//!   4. POST `node_id + token + csr_pem`; on success the master returns a
-//!      signed client cert + the same CA cert.
-//!   5. Write `ca.crt`, `node.crt`, `node.key` into `pki_dir` (0600,
-//!      tempfile + rename).
-//!
-//! Subsequent restarts skip this entirely.
-
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
 use anyhow::{anyhow, bail, Context, Result};
 use base64::Engine;
 use rcgen::{CertificateParams, KeyPair};
-use tonic::transport::{Certificate, ClientTlsConfig, Endpoint};
-
-use relay_proto::v1::{enroll_service_client::EnrollServiceClient, EnrollRequest};
 
 pub struct EnrollInput {
     pub pki_dir: PathBuf,
     pub node_id: String,
     pub token: String,
     pub master_enroll_endpoint: String,
-    pub master_server_name: String,
     pub ca_cert_pem: String,
 }
 
@@ -95,46 +75,57 @@ pub async fn enroll(input: EnrollInput) -> Result<()> {
     fs::create_dir_all(&input.pki_dir)
         .with_context(|| format!("creating pki dir {}", input.pki_dir.display()))?;
 
-    // 1. Local keypair.
     let key = KeyPair::generate().context("generating node keypair")?;
     let key_pem = key.serialize_pem();
-
-    // 2. CSR — subject/SAN are placeholders; the master ignores them and
-    //    rebuilds from node_id, but rcgen still wants something here.
     let csr_pem = build_csr(&input.node_id, &key)?;
 
-    // 3. TLS to enroll endpoint, pinning the CA we were installed with.
-    let tls = ClientTlsConfig::new()
-        .ca_certificate(Certificate::from_pem(input.ca_cert_pem.clone()))
-        .domain_name(&input.master_server_name);
-    let endpoint = Endpoint::from_shared(input.master_enroll_endpoint.clone())
-        .with_context(|| format!("invalid enroll endpoint {:?}", input.master_enroll_endpoint))?
-        .tls_config(tls)?
-        .connect_timeout(Duration::from_secs(10));
-    let channel = endpoint
-        .connect()
-        .await
-        .with_context(|| format!("connecting to {:?}", input.master_enroll_endpoint))?;
+    // Add the pinned relay CA so HTTPS enrollment validates against it;
+    // reqwest also keeps the system root store, so Let's Encrypt / Caddy works too.
+    let ca_cert =
+        reqwest::Certificate::from_pem(input.ca_cert_pem.as_bytes()).context("parsing CA cert")?;
+    let client = reqwest::ClientBuilder::new()
+        .add_root_certificate(ca_cert)
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .context("building HTTP client")?;
 
-    let mut client = EnrollServiceClient::new(channel);
-    let resp = client
-        .enroll(EnrollRequest {
-            node_id: input.node_id.clone(),
-            enrollment_token: input.token.clone(),
-            csr_pem,
+    #[derive(serde::Serialize)]
+    struct Req<'a> {
+        node_id: &'a str,
+        enrollment_token: &'a str,
+        csr_pem: &'a str,
+    }
+    #[derive(serde::Deserialize)]
+    struct Resp {
+        node_cert_pem: String,
+        ca_cert_pem: String,
+        not_after_unix_ms: i64,
+    }
+
+    let http_resp = client
+        .post(&input.master_enroll_endpoint)
+        .json(&Req {
+            node_id: &input.node_id,
+            enrollment_token: &input.token,
+            csr_pem: &csr_pem,
         })
+        .send()
         .await
-        .context("Enroll RPC")?
-        .into_inner();
+        .with_context(|| format!("POST {}", input.master_enroll_endpoint))?;
+
+    if !http_resp.status().is_success() {
+        let status = http_resp.status();
+        let body = http_resp.text().await.unwrap_or_default();
+        bail!("enrollment failed: HTTP {status}: {body}");
+    }
+
+    let resp: Resp = http_resp.json().await.context("parsing enroll response")?;
 
     if resp.node_cert_pem.is_empty() || resp.ca_cert_pem.is_empty() {
         bail!("master returned empty cert(s)");
     }
 
-    // 4. Persist (atomic + 0600). The CA returned by the master must match
-    //    the one we pinned — otherwise the master is misbehaving (or we got
-    //    MITM'd, but TLS already prevents that since we pinned the CA up
-    //    front). Belt-and-braces check.
+    // Belt-and-braces: CA in response must match the one pinned at install time.
     if resp.ca_cert_pem.trim() != input.ca_cert_pem.trim() {
         bail!("CA returned by master differs from the one pinned at install time");
     }

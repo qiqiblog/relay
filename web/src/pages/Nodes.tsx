@@ -225,6 +225,7 @@ export default function NodesPage() {
     const lines = [
       `bash <(curl -fsSL https://raw.githubusercontent.com/0xUnixIO/relay/main/install-node.sh) \\`,
       `  --master ${serverInfo.master_endpoint} \\`,
+      `  --master-enroll-endpoint ${serverInfo.enroll_endpoint} \\`,
       `  --node-id ${c.id} \\`,
       `  --token ${c.enrollment_token} \\`,
       `  --ca-cert ${serverInfo.ca_cert_b64}`,

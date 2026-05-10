@@ -34,6 +34,7 @@ bytes.workspace = true
 ipnet = "2.10"
 rcgen = "0.13"
 base64 = "0.22.1"
+reqwest.workspace = true
 x509-parser = "0.16"
 time = "0.3"
 sysinfo = { version = "0.32", default-features = false, features = ["system"] }

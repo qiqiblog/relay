@@ -38,7 +38,7 @@ struct Cli {
     master_server_name: Option<String>,
 
     // --- cold-start enrollment (only consumed when pki_dir is empty) ---
-    /// Master Enroll TLS endpoint (defaults to `--master` host with port 7444).
+    /// Master HTTP enroll endpoint (defaults to `--master` host on port 7080).
     #[arg(long, env = "NODE_MASTER_ENROLL_ENDPOINT")]
     master_enroll_endpoint: Option<String>,
 
@@ -484,18 +484,13 @@ async fn cold_start_enroll(cli: &Cli) -> Result<()> {
         Some(s) => s.clone(),
         None => default_enroll_endpoint(&cli.master)?,
     };
-    let server_name = match &cli.master_server_name {
-        Some(s) => s.clone(),
-        None => master_host(&endpoint)?,
-    };
 
-    tracing::info!(%endpoint, %server_name, "cold-start: enrolling with master");
+    tracing::info!(%endpoint, "cold-start: enrolling with master");
     enroll::enroll(enroll::EnrollInput {
         pki_dir: cli.pki_dir.clone(),
         node_id: cli.node_id.clone(),
         token: token.to_string(),
         master_enroll_endpoint: endpoint,
-        master_server_name: server_name,
         ca_cert_pem: ca_pem,
     })
     .await
@@ -503,12 +498,7 @@ async fn cold_start_enroll(cli: &Cli) -> Result<()> {
 
 fn default_enroll_endpoint(master: &str) -> Result<String> {
     let host = master_host(master)?;
-    let scheme = if master.starts_with("http://") {
-        "http://"
-    } else {
-        "https://"
-    };
-    Ok(format!("{scheme}{host}:7444"))
+    Ok(format!("http://{host}:7080/api/v1/enroll"))
 }
 
 fn now_ms() -> i64 {

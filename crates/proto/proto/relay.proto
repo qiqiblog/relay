@@ -6,28 +6,6 @@ service NodeService {
   rpc Channel(stream NodeMessage) returns (stream MasterMessage);
 }
 
-// Enroll lives on a separate (TLS, no client cert) listener. A node submits
-// its enrollment_token plus a CSR; on success the master returns a signed
-// client cert + the CA cert so the node can establish mTLS on the main
-// gRPC port. enrollment_token is single-use.
-service EnrollService {
-  rpc Enroll(EnrollRequest) returns (EnrollResponse);
-}
-
-message EnrollRequest {
-  string node_id = 1;
-  string enrollment_token = 2;
-  // PEM-encoded CSR. Subject and SAN fields in the CSR are ignored — only
-  // the public key is consumed; the master rebuilds subject/SAN from
-  // node_id.
-  string csr_pem = 3;
-}
-
-message EnrollResponse {
-  string node_cert_pem = 1;
-  string ca_cert_pem   = 2;
-  int64  not_after_unix_ms = 3;
-}
 
 message NodeMessage {
   oneof payload {

@@ -156,6 +156,7 @@ pub async fn serve(addr: SocketAddr, state: AppState) -> anyhow::Result<()> {
         .route("/api/v1/auth/status", get(auth_status))
         .route("/api/v1/auth/bootstrap", post(bootstrap_admin))
         .route("/api/v1/auth/login", post(login))
+        .route("/api/v1/enroll", post(crate::enroll::enroll_handler))
         .route("/api/v1/system/branding", get(get_branding))
         .route("/scripts/:name", get(proxy_script));
 
@@ -1066,7 +1067,6 @@ pub struct ServerInfo {
     pub public_host: String,
     pub public_hosts: Vec<String>,
     pub grpc_port: u16,
-    pub enroll_port: u16,
     pub master_endpoint: String,
     pub enroll_endpoint: String,
     pub ca_cert_pem: String,
@@ -1082,16 +1082,24 @@ async fn server_info(State(s): State<AppState>) -> ApiResult<Json<ServerInfo>> {
         .cloned()
         .unwrap_or_else(|| "localhost".into());
     let grpc_port = port_of(&s.cfg.grpc_addr).unwrap_or(7443);
-    let enroll_port = port_of(&s.cfg.enroll_addr).unwrap_or(7444);
+    // When HTTP is bound to loopback, a reverse proxy (e.g. Caddy) is in front
+    // and the enrollment endpoint is reachable at the public HTTPS URL.
+    let http_is_local =
+        s.cfg.http_addr.starts_with("127.0.0.1") || s.cfg.http_addr.starts_with("[::1]");
+    let enroll_endpoint = if http_is_local {
+        format!("https://{public_host}/api/v1/enroll")
+    } else {
+        let http_port = port_of(&s.cfg.http_addr).unwrap_or(7080);
+        format!("http://{public_host}:{http_port}/api/v1/enroll")
+    };
     let ca_pem = s.pki.ca_cert_pem.clone();
     let ca_b64 = base64::engine::general_purpose::STANDARD.encode(ca_pem.as_bytes());
     Ok(Json(ServerInfo {
         master_endpoint: format!("https://{public_host}:{grpc_port}"),
-        enroll_endpoint: format!("https://{public_host}:{enroll_port}"),
+        enroll_endpoint,
         public_host,
         public_hosts,
         grpc_port,
-        enroll_port,
         ca_cert_pem: ca_pem,
         ca_cert_b64: ca_b64,
         version: env!("CARGO_PKG_VERSION").to_string(),

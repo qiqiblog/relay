@@ -10,7 +10,6 @@ pub struct Config {
     pub jwt_secret: String,
     pub pki_dir: PathBuf,
     pub public_addrs: Vec<String>,
-    pub enroll_addr: String,
     /// 可选 Redis URL（如 `redis://:pw@127.0.0.1:6379/0`），仅用于轻量级缓存（probe 防抖等）。
     /// 留空时 master 完全不连 Redis，对应功能退化为无缓存。
     pub redis_url: Option<String>,
@@ -44,8 +43,6 @@ impl Config {
                 .unwrap_or_else(|_| "/var/lib/relay-master/pki".into())
                 .into(),
             public_addrs,
-            enroll_addr: std::env::var("MASTER_ENROLL_ADDR")
-                .unwrap_or_else(|_| "0.0.0.0:7444".into()),
             redis_url: std::env::var("MASTER_REDIS_URL")
                 .ok()
                 .map(|s| s.trim().to_string())

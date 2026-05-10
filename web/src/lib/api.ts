@@ -119,7 +119,6 @@ export interface ServerInfo {
   public_host: string;
   public_hosts: string[];
   grpc_port: number;
-  enroll_port: number;
   master_endpoint: string;
   enroll_endpoint: string;
   ca_cert_pem: string;

@@ -124,8 +124,7 @@ async fn serve() -> Result<()> {
 
     let http_addr: std::net::SocketAddr = cfg.http_addr.parse()?;
     let grpc_addr: std::net::SocketAddr = cfg.grpc_addr.parse()?;
-    let enroll_addr: std::net::SocketAddr = cfg.enroll_addr.parse()?;
-    tracing::info!(%http_addr, %grpc_addr, %enroll_addr, "starting relay-master");
+    tracing::info!(%http_addr, %grpc_addr, "starting relay-master");
 
     let state = state::AppState::new(cfg, pool, pki.clone(), redis);
 
@@ -159,12 +158,10 @@ async fn serve() -> Result<()> {
 
     let http_task = tokio::spawn(http::serve(http_addr, state.clone()));
     let grpc_task = tokio::spawn(grpc::serve(grpc_addr, state.clone(), pki.clone()));
-    let enroll_task = tokio::spawn(enroll::serve(enroll_addr, state.clone(), pki.clone()));
 
     tokio::select! {
         r = http_task => r??,
         r = grpc_task => r??,
-        r = enroll_task => r??,
         _ = tokio::signal::ctrl_c() => {
             tracing::info!("shutdown signal received");
         }

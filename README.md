@@ -88,7 +88,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/0xUnixIO/relay/main/install.
 - Linux x86_64 或 aarch64
 - systemd
 - Docker + docker compose v2（推荐）或自有 PostgreSQL / Redis 实例；原生 apt 安装仅支持 Debian/Ubuntu
-- 开放端口：`7080`（HTTP）、`7443`（gRPC）、`7444`（节点注册）
+- 开放端口：`7080`（HTTP + 节点注册）、`7443`（gRPC）
 
 > relay master 本身是原生 Rust 二进制，以 systemd 服务运行在宿主机上，不跑在容器里。
 
